@@ -2,8 +2,8 @@
 
 ## Requirements
 
-- Python 3.7 or higher
-- pip (Python package installer)
+- Python 3.12 or higher
+- pip or uv (Python package installer)
 
 ## Install from PyPI
 
@@ -30,3 +30,13 @@ The library has minimal dependencies:
 
 These dependencies will be automatically installed when you install the package.
 
+## CLI
+
+Installing the package also installs the `substack` command-line tool:
+
+```bash
+substack --help
+substack quickstart
+```
+
+See the [CLI Guide](cli.md) for full documentation.
