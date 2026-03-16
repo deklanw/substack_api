@@ -41,7 +41,8 @@ paywalled_content = authenticated_post.get_content()
 
 ## Features
 
-- Simple, intuitive API
+- Simple, intuitive Python API
+- Command-line interface for quick terminal access
 - Comprehensive access to Substack data
 - Pagination support for large collections
 - Automatic caching to minimize API calls
