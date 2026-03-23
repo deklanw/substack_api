@@ -1,10 +1,8 @@
-import asyncio
 from typing import Any, Mapping
 
 from curl_cffi import requests as curl_requests
 
 DEFAULT_TIMEOUT = 30.0
-REQUEST_DELAY_SECONDS = 2.0
 BROWSER_IMPERSONATE = "chrome"
 
 HEADERS = {
@@ -70,7 +68,3 @@ async def async_post(
 
     async with curl_requests.AsyncSession(**client_kwargs) as temp_client:
         return await temp_client.post(url, **kwargs)
-
-
-async def polite_request_delay() -> None:
-    await asyncio.sleep(REQUEST_DELAY_SECONDS)

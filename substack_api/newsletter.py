@@ -8,7 +8,6 @@ from substack_api._http import (
     DEFAULT_TIMEOUT,
     HEADERS,
     async_get,
-    polite_request_delay,
 )
 
 from substack_api.auth import SubstackAuth
@@ -106,8 +105,6 @@ class Newsletter:
             if self.proxy is not None:
                 request_kwargs["proxy"] = self.proxy
             resp = await async_get(endpoint, headers=HEADERS, **request_kwargs)
-
-        await polite_request_delay()
         return resp
 
     async def _fetch_paginated_posts(

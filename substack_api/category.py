@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from substack_api._http import DEFAULT_TIMEOUT, HEADERS, async_get, polite_request_delay
+from substack_api._http import DEFAULT_TIMEOUT, HEADERS, async_get
 
 # Add Newsletter import
 from .newsletter import Newsletter
@@ -152,7 +152,6 @@ class Category:
                 request_kwargs["proxy"] = self.proxy
             r = await async_get(full_url, headers=HEADERS, **request_kwargs)
             r.raise_for_status()
-            await polite_request_delay()
 
             resp = r.json()
             newsletters = resp["publications"]
