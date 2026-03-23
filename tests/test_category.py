@@ -64,6 +64,22 @@ def test_list_all_categories(mock_get, mock_categories):
     )
 
 
+@patch("substack_api.category.async_get", new_callable=AsyncMock)
+def test_list_all_categories_with_proxy(mock_get, mock_categories):
+    mock_response = MagicMock()
+    mock_response.json.return_value = mock_categories
+    mock_get.return_value = mock_response
+
+    run(list_all_categories(proxy="http://127.0.0.1:8080"))
+
+    mock_get.assert_awaited_once_with(
+        "https://substack.com/api/v1/categories",
+        headers=HEADERS,
+        proxy="http://127.0.0.1:8080",
+        timeout=DEFAULT_TIMEOUT,
+    )
+
+
 @patch("substack_api.category.list_all_categories", new_callable=AsyncMock)
 def test_category_init(mock_list_all_categories):
     category = Category(name="Technology", id=1)
@@ -89,6 +105,19 @@ def test_category_init(mock_list_all_categories):
     assert category.name == "Culture"
     assert category.id == 3
     mock_list_all_categories.assert_awaited_once()
+
+
+@patch("substack_api.category.list_all_categories", new_callable=AsyncMock)
+def test_category_create_with_proxy(mock_list_all_categories):
+    mock_list_all_categories.return_value = [
+        ("Technology", 1),
+        ("Finance", 2),
+    ]
+
+    category = run(Category.create(name="Finance", proxy="http://127.0.0.1:8080"))
+
+    assert category.proxy == "http://127.0.0.1:8080"
+    mock_list_all_categories.assert_awaited_once_with(proxy="http://127.0.0.1:8080")
 
 
 def test_category_string_representation():

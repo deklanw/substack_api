@@ -64,6 +64,29 @@ class TestHandleRedirects:
 
         assert result is None
 
+    @patch("substack_api.user.async_get", new_callable=AsyncMock)
+    def test_resolve_handle_redirect_with_proxy(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.url = "https://substack.com/@newhandle"
+        mock_get.return_value = mock_response
+
+        result = run(
+            resolve_handle_redirect(
+                "oldhandle",
+                proxy="http://127.0.0.1:8080",
+            )
+        )
+
+        assert result == "newhandle"
+        mock_get.assert_awaited_once_with(
+            "https://substack.com/@oldhandle",
+            headers=HEADERS,
+            proxy="http://127.0.0.1:8080",
+            timeout=30.0,
+            allow_redirects=True,
+        )
+
 
 class TestUserWithRedirects:
     def test_user_init_with_redirects(self):

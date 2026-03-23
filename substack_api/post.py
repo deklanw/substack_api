@@ -11,7 +11,12 @@ class Post:
     A class to represent a Substack post.
     """
 
-    def __init__(self, url: str, auth: Optional[SubstackAuth] = None) -> None:
+    def __init__(
+        self,
+        url: str,
+        auth: Optional[SubstackAuth] = None,
+        proxy: str | None = None,
+    ) -> None:
         """
         Initialize a Post object.
 
@@ -21,9 +26,12 @@ class Post:
             The URL of the Substack post
         auth : Optional[SubstackAuth]
             Authentication handler for accessing paywalled content
+        proxy : str, optional
+            Proxy URL used for unauthenticated requests
         """
         self.url = url
         self.auth = auth
+        self.proxy = proxy
         parsed_url = urlparse(url)
         self.base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
         path_parts = parsed_url.path.strip("/").split("/")
@@ -60,7 +68,10 @@ class Post:
         if self.auth and self.auth.authenticated:
             r = await self.auth.get(self.endpoint, timeout=DEFAULT_TIMEOUT)
         else:
-            r = await async_get(self.endpoint, headers=HEADERS, timeout=DEFAULT_TIMEOUT)
+            request_kwargs = {"timeout": DEFAULT_TIMEOUT}
+            if self.proxy is not None:
+                request_kwargs["proxy"] = self.proxy
+            r = await async_get(self.endpoint, headers=HEADERS, **request_kwargs)
         r.raise_for_status()
 
         self._post_data = r.json()

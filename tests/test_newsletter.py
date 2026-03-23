@@ -111,6 +111,27 @@ def test_fetch_paginated_posts_single_page(mock_get, newsletter_url, mock_post_i
 
 
 @patch("substack_api.newsletter.async_get", new_callable=AsyncMock)
+def test_fetch_paginated_posts_single_page_with_proxy(
+    mock_get, newsletter_url, mock_post_items
+):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = mock_post_items
+    mock_get.return_value = mock_response
+
+    newsletter = Newsletter(newsletter_url, proxy="http://127.0.0.1:8080")
+    params = {"sort": "new"}
+    run(newsletter._fetch_paginated_posts(params, limit=None))
+
+    mock_get.assert_awaited_once_with(
+        f"{newsletter_url}/api/v1/archive?sort=new&offset=0&limit=15",
+        headers=HEADERS,
+        proxy="http://127.0.0.1:8080",
+        timeout=DEFAULT_TIMEOUT,
+    )
+
+
+@patch("substack_api.newsletter.async_get", new_callable=AsyncMock)
 def test_fetch_paginated_posts_multiple_pages(mock_get, newsletter_url, mock_post_items):
     mock_response_1 = MagicMock()
     mock_response_1.status_code = 200

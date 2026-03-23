@@ -148,6 +148,13 @@ class TestBuildParser:
         args = parser.parse_args(["--pretty", "categories"])
         assert args.pretty is True
 
+    def test_global_proxy_option(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--proxy", "http://127.0.0.1:8080", "categories"]
+        )
+        assert args.proxy == "http://127.0.0.1:8080"
+
     def test_quickstart_args(self):
         parser = _build_parser()
         args = parser.parse_args(["quickstart"])
@@ -225,6 +232,29 @@ class TestNewsletterCommands:
 
         MockNewsletter.return_value.get_posts.assert_awaited_once_with(
             sorting="top", limit=3
+        )
+
+    @patch("substack_api.cli.Newsletter")
+    def test_posts_with_proxy(self, MockNewsletter, capsys):
+        MockNewsletter.return_value.get_posts = AsyncMock(return_value=[])
+
+        with patch(
+            "sys.argv",
+            [
+                "substack",
+                "--proxy",
+                "http://127.0.0.1:8080",
+                "newsletter",
+                "posts",
+                "https://x.substack.com",
+            ],
+        ):
+            main()
+
+        MockNewsletter.assert_called_once_with(
+            "https://x.substack.com",
+            auth=None,
+            proxy="http://127.0.0.1:8080",
         )
 
     @patch("substack_api.cli.Newsletter")
@@ -368,6 +398,23 @@ class TestUserCommands:
         assert len(data) == 1
         assert data[0]["publication_name"] == "Test"
 
+    @patch("substack_api.cli.User")
+    def test_info_with_proxy(self, MockUser, capsys):
+        MockUser.return_value.get_raw_data = AsyncMock(
+            return_value={"id": 1, "name": "Test User"}
+        )
+
+        with patch(
+            "sys.argv",
+            ["substack", "--proxy", "http://127.0.0.1:8080", "user", "info", "testuser"],
+        ):
+            main()
+
+        MockUser.assert_called_once_with(
+            "testuser",
+            proxy="http://127.0.0.1:8080",
+        )
+
 
 class TestCategoryCommands:
     @patch("substack_api.cli.list_all_categories", new_callable=AsyncMock)
@@ -428,6 +475,18 @@ class TestCategoryCommands:
 
         mock_create.assert_awaited_once_with(name=None, id=42)
 
+    @patch("substack_api.cli.list_all_categories", new_callable=AsyncMock)
+    def test_categories_with_proxy(self, mock_list, capsys):
+        mock_list.return_value = []
+
+        with patch(
+            "sys.argv",
+            ["substack", "--proxy", "http://127.0.0.1:8080", "categories"],
+        ):
+            main()
+
+        mock_list.assert_awaited_once_with(proxy="http://127.0.0.1:8080")
+
 
 class TestResolveHandle:
     @patch("substack_api.cli.resolve_handle_redirect", new_callable=AsyncMock)
@@ -449,6 +508,27 @@ class TestResolveHandle:
 
         data = json.loads(capsys.readouterr().out)
         assert data == {"old_handle": "sameuser", "new_handle": None}
+
+    @patch("substack_api.cli.resolve_handle_redirect", new_callable=AsyncMock)
+    def test_resolve_with_proxy(self, mock_resolve, capsys):
+        mock_resolve.return_value = None
+
+        with patch(
+            "sys.argv",
+            [
+                "substack",
+                "--proxy",
+                "http://127.0.0.1:8080",
+                "resolve-handle",
+                "sameuser",
+            ],
+        ):
+            main()
+
+        mock_resolve.assert_awaited_once_with(
+            "sameuser",
+            proxy="http://127.0.0.1:8080",
+        )
 
 
 class TestPrettyOutput:
@@ -529,4 +609,38 @@ class TestAuthIntegration:
 
         MockAuth.assert_called_once_with("cookies.json")
         MockPost.assert_called_once_with("https://x.substack.com/p/test", auth=mock_auth)
+        mock_auth.aclose.assert_awaited_once()
+
+    @patch("substack_api.cli.Post")
+    @patch("substack_api.cli.SubstackAuth")
+    def test_proxy_passed_to_auth_and_post(self, MockAuth, MockPost, capsys):
+        mock_auth = MagicMock()
+        mock_auth.aclose = AsyncMock()
+        MockAuth.return_value = mock_auth
+        MockPost.return_value.get_metadata = AsyncMock(return_value={"title": "Test"})
+
+        with patch(
+            "sys.argv",
+            [
+                "substack",
+                "--cookies",
+                "cookies.json",
+                "--proxy",
+                "http://127.0.0.1:8080",
+                "post",
+                "metadata",
+                "https://x.substack.com/p/test",
+            ],
+        ):
+            main()
+
+        MockAuth.assert_called_once_with(
+            "cookies.json",
+            proxy="http://127.0.0.1:8080",
+        )
+        MockPost.assert_called_once_with(
+            "https://x.substack.com/p/test",
+            auth=mock_auth,
+            proxy="http://127.0.0.1:8080",
+        )
         mock_auth.aclose.assert_awaited_once()

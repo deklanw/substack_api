@@ -7,7 +7,8 @@ from substack_api._http import DEFAULT_TIMEOUT, HEADERS, async_get, polite_reque
 # Add Newsletter import
 from .newsletter import Newsletter
 
-async def list_all_categories() -> List[Tuple[str, int]]:
+
+async def list_all_categories(proxy: str | None = None) -> List[Tuple[str, int]]:
     """
     Get name / id representations of all newsletter categories
 
@@ -17,7 +18,10 @@ async def list_all_categories() -> List[Tuple[str, int]]:
         List of tuples containing (category_name, category_id)
     """
     endpoint_cat = "https://substack.com/api/v1/categories"
-    r = await async_get(endpoint_cat, headers=HEADERS, timeout=DEFAULT_TIMEOUT)
+    request_kwargs = {"timeout": DEFAULT_TIMEOUT}
+    if proxy is not None:
+        request_kwargs["proxy"] = proxy
+    r = await async_get(endpoint_cat, headers=HEADERS, **request_kwargs)
     r.raise_for_status()
     categories = [(i["name"], i["id"]) for i in r.json()]
     return categories
@@ -28,7 +32,12 @@ class Category:
     Top-level newsletter category
     """
 
-    def __init__(self, name: Optional[str] = None, id: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        name: Optional[str] = None,
+        id: Optional[int] = None,
+        proxy: str | None = None,
+    ) -> None:
         """
         Initialize a Category object.
 
@@ -38,6 +47,8 @@ class Category:
             The name of the category
         id : Optional[int]
             The ID of the category
+        proxy : str, optional
+            Proxy URL used for requests
 
         Raises
         ------
@@ -49,6 +60,7 @@ class Category:
 
         self.name = name
         self.id = id
+        self.proxy = proxy
         self._newsletters_data = None  # Cache for newsletter data
 
     def __str__(self) -> str:
@@ -59,9 +71,12 @@ class Category:
 
     @classmethod
     async def create(
-        cls, name: Optional[str] = None, id: Optional[int] = None
+        cls,
+        name: Optional[str] = None,
+        id: Optional[int] = None,
+        proxy: str | None = None,
     ) -> "Category":
-        category = cls(name=name, id=id)
+        category = cls(name=name, id=id, proxy=proxy)
         await category._ensure_resolved()
         return category
 
@@ -80,7 +95,7 @@ class Category:
         ValueError
             If the category name is not found
         """
-        categories = await list_all_categories()
+        categories = await list_all_categories(proxy=self.proxy)
         for name, id in categories:
             if name == self.name:
                 self.id = id
@@ -96,7 +111,7 @@ class Category:
         ValueError
             If the category ID is not found
         """
-        categories = await list_all_categories()
+        categories = await list_all_categories(proxy=self.proxy)
         for name, id in categories:
             if id == self.id:
                 self.name = name
@@ -132,7 +147,10 @@ class Category:
         # endpoint doesn't return more than 21 pages
         while more and page_num <= 20:
             full_url = endpoint + str(page_num)
-            r = await async_get(full_url, headers=HEADERS, timeout=DEFAULT_TIMEOUT)
+            request_kwargs = {"timeout": DEFAULT_TIMEOUT}
+            if self.proxy is not None:
+                request_kwargs["proxy"] = self.proxy
+            r = await async_get(full_url, headers=HEADERS, **request_kwargs)
             r.raise_for_status()
             await polite_request_delay()
 
@@ -168,7 +186,7 @@ class Category:
             List of Newsletter objects
         """
         urls = await self.get_newsletter_urls()
-        return [Newsletter(url) for url in urls]
+        return [Newsletter(url, proxy=self.proxy) for url in urls]
 
     async def get_newsletter_metadata(self) -> List[Dict[str, Any]]:
         """

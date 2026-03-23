@@ -14,6 +14,7 @@ class SubstackAuth:
     def __init__(
         self,
         cookies_path: str,
+        proxy: str | None = None,
     ):
         """
         Initialize authentication handler.
@@ -22,12 +23,18 @@ class SubstackAuth:
         ----------
         cookies_path : str, optional
             Path to retrieve session cookies from
+        proxy : str, optional
+            Proxy URL used for authenticated requests
         """
         self.cookies_path = cookies_path
-        self.session = curl_requests.AsyncSession(
-            headers=JSON_HEADERS,
-            impersonate=BROWSER_IMPERSONATE,
-        )
+        self.proxy = proxy
+        session_kwargs = {
+            "headers": JSON_HEADERS,
+            "impersonate": BROWSER_IMPERSONATE,
+        }
+        if proxy is not None:
+            session_kwargs["proxy"] = proxy
+        self.session = curl_requests.AsyncSession(**session_kwargs)
         self.authenticated = False
 
         # Try to load existing cookies

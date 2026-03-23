@@ -22,6 +22,7 @@ substack — CLI for reading Substack newsletters, posts, and user profiles.
 
 All output is JSON by default. Add --pretty for human-readable formatting.
 Use --cookies <path> to authenticate for paywalled content.
+Use --proxy <url> to route requests through a proxy.
 
 COMMANDS
 ========
@@ -69,6 +70,9 @@ EXAMPLES
   # Get the HTML content of a post (with auth for paywalled content)
   substack --cookies cookies.json post content https://example.substack.com/p/paid-post
 
+  # Route requests through a proxy
+  substack --proxy http://127.0.0.1:8080 newsletter posts https://example.substack.com --limit 5
+
   # Look up a user's subscriptions
   substack user subscriptions username
 
@@ -94,11 +98,19 @@ def _json_out(data: Any, pretty: bool = False) -> None:
     sys.stdout.write("\n")
 
 
-def _get_auth(cookies_path: str | None):
+def _get_auth(cookies_path: str | None, proxy: str | None = None):
     """Build auth object if cookies path provided."""
     if cookies_path:
+        if proxy:
+            return SubstackAuth(cookies_path, proxy=proxy)
         return SubstackAuth(cookies_path)
     return None
+
+
+def _client_kwargs(proxy: str | None) -> dict[str, str]:
+    if proxy:
+        return {"proxy": proxy}
+    return {}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -112,6 +124,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pretty", action="store_true", help="Pretty-print JSON output"
     )
+    parser.add_argument("--proxy", metavar="URL", help="Proxy URL for all HTTP requests")
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -215,9 +228,9 @@ async def _dispatch(args: argparse.Namespace) -> None:
             )
             sys.exit(1)
 
-        auth = _get_auth(args.cookies)
+        auth = _get_auth(args.cookies, proxy=args.proxy)
         try:
-            nl = Newsletter(args.url, auth=auth)
+            nl = Newsletter(args.url, auth=auth, **_client_kwargs(args.proxy))
 
             if args.subcommand == "posts":
                 posts = await nl.get_posts(sorting=args.sort, limit=args.limit)
@@ -244,9 +257,9 @@ async def _dispatch(args: argparse.Namespace) -> None:
             print("Usage: substack post {metadata,content,paywalled}", file=sys.stderr)
             sys.exit(1)
 
-        auth = _get_auth(args.cookies)
+        auth = _get_auth(args.cookies, proxy=args.proxy)
         try:
-            post = Post(args.url, auth=auth)
+            post = Post(args.url, auth=auth, **_client_kwargs(args.proxy))
 
             if args.subcommand == "metadata":
                 _json_out(await post.get_metadata(), pretty)
@@ -264,7 +277,7 @@ async def _dispatch(args: argparse.Namespace) -> None:
             print("Usage: substack user {info,subscriptions}", file=sys.stderr)
             sys.exit(1)
 
-        user = User(args.username)
+        user = User(args.username, **_client_kwargs(args.proxy))
 
         if args.subcommand == "info":
             _json_out(await user.get_raw_data(), pretty)
@@ -273,7 +286,7 @@ async def _dispatch(args: argparse.Namespace) -> None:
         return
 
     if args.command == "categories":
-        cats = await list_all_categories()
+        cats = await list_all_categories(**_client_kwargs(args.proxy))
         _json_out([{"name": name, "id": id} for name, id in cats], pretty)
         return
 
@@ -282,7 +295,11 @@ async def _dispatch(args: argparse.Namespace) -> None:
             print("Usage: substack category {newsletters}", file=sys.stderr)
             sys.exit(1)
 
-        cat = await Category.create(name=args.name, id=args.id)
+        cat = await Category.create(
+            name=args.name,
+            id=args.id,
+            **_client_kwargs(args.proxy),
+        )
 
         if args.subcommand == "newsletters":
             if args.metadata:
@@ -292,7 +309,7 @@ async def _dispatch(args: argparse.Namespace) -> None:
         return
 
     if args.command == "resolve-handle":
-        result = await resolve_handle_redirect(args.handle)
+        result = await resolve_handle_redirect(args.handle, **_client_kwargs(args.proxy))
         _json_out({"old_handle": args.handle, "new_handle": result}, pretty)
         return
 

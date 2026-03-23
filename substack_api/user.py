@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 async def resolve_handle_redirect(
-    old_handle: str, timeout: float = DEFAULT_TIMEOUT
+    old_handle: str,
+    timeout: float = DEFAULT_TIMEOUT,
+    proxy: str | None = None,
 ) -> Optional[str]:
     """
     Resolve a potentially renamed Substack handle by following redirects.
@@ -22,6 +24,8 @@ async def resolve_handle_redirect(
         The original handle that may have been renamed
     timeout : int
         Request timeout in seconds
+    proxy : str, optional
+        Proxy URL used for the redirect lookup
 
     Returns
     -------
@@ -30,11 +34,16 @@ async def resolve_handle_redirect(
     """
     try:
         # Make request to the public profile page with redirects enabled
+        request_kwargs = {
+            "timeout": timeout,
+            "allow_redirects": True,
+        }
+        if proxy is not None:
+            request_kwargs["proxy"] = proxy
         response = await async_get(
             f"https://substack.com/@{old_handle}",
             headers=HEADERS,
-            timeout=timeout,
-            allow_redirects=True,
+            **request_kwargs,
         )
 
         # If we got a successful response, check if we were redirected
@@ -68,7 +77,12 @@ class User:
     Now handles renamed accounts by following redirects when a handle has changed.
     """
 
-    def __init__(self, username: str, follow_redirects: bool = True):
+    def __init__(
+        self,
+        username: str,
+        follow_redirects: bool = True,
+        proxy: str | None = None,
+    ):
         """
         Initialize a User object.
 
@@ -78,10 +92,13 @@ class User:
             The Substack username
         follow_redirects : bool
             Whether to follow redirects when a handle has been renamed (default: True)
+        proxy : str, optional
+            Proxy URL used for requests
         """
         self.username = username
         self.original_username = username  # Keep track of the original
         self.follow_redirects = follow_redirects
+        self.proxy = proxy
         self.endpoint = f"https://substack.com/api/v1/user/{username}/public_profile"
         self._user_data = None  # Cache for user data
         self._redirect_attempted = False  # Prevent infinite redirect loops
@@ -130,7 +147,10 @@ class User:
             return self._user_data
 
         try:
-            r = await async_get(self.endpoint, headers=HEADERS, timeout=DEFAULT_TIMEOUT)
+            request_kwargs = {"timeout": DEFAULT_TIMEOUT}
+            if self.proxy is not None:
+                request_kwargs["proxy"] = self.proxy
+            r = await async_get(self.endpoint, headers=HEADERS, **request_kwargs)
             r.raise_for_status()
             self._user_data = r.json()
             return self._user_data
@@ -146,7 +166,10 @@ class User:
                 self._redirect_attempted = True
 
                 # Try to resolve the redirect
-                new_handle = await resolve_handle_redirect(self.username)
+                resolve_kwargs = {}
+                if self.proxy is not None:
+                    resolve_kwargs["proxy"] = self.proxy
+                new_handle = await resolve_handle_redirect(self.username, **resolve_kwargs)
 
                 if new_handle:
                     # Update our state with the new handle
@@ -154,9 +177,10 @@ class User:
 
                     # Try the request again with the new handle
                     try:
-                        r = await async_get(
-                            self.endpoint, headers=HEADERS, timeout=DEFAULT_TIMEOUT
-                        )
+                        request_kwargs = {"timeout": DEFAULT_TIMEOUT}
+                        if self.proxy is not None:
+                            request_kwargs["proxy"] = self.proxy
+                        r = await async_get(self.endpoint, headers=HEADERS, **request_kwargs)
                         r.raise_for_status()
                         self._user_data = r.json()
                         return self._user_data

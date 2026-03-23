@@ -42,6 +42,23 @@ def test_fetch_user_data(mock_get):
 
 
 @patch("substack_api.user.async_get", new_callable=AsyncMock)
+def test_fetch_user_data_with_proxy(mock_get):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": 123, "name": "Test User"}
+    mock_get.return_value = mock_response
+
+    user = User("testuser", proxy="http://127.0.0.1:8080")
+    run(user._fetch_user_data())
+
+    mock_get.assert_awaited_once_with(
+        "https://substack.com/api/v1/user/testuser/public_profile",
+        headers=HEADERS,
+        proxy="http://127.0.0.1:8080",
+        timeout=DEFAULT_TIMEOUT,
+    )
+
+
+@patch("substack_api.user.async_get", new_callable=AsyncMock)
 def test_fetch_user_data_uses_cache(mock_get):
     mock_response = MagicMock()
     mock_response.json.return_value = {"id": 123, "name": "Test User"}

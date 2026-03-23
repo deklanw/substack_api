@@ -82,6 +82,23 @@ def test_fetch_post_data(mock_get, sample_post_url, mock_post_data):
 
 
 @patch("substack_api.post.async_get", new_callable=AsyncMock)
+def test_fetch_post_data_with_proxy(mock_get, sample_post_url, mock_post_data):
+    mock_response = MagicMock()
+    mock_response.json.return_value = mock_post_data
+    mock_get.return_value = mock_response
+
+    post = Post(sample_post_url, proxy="http://127.0.0.1:8080")
+    run(post._fetch_post_data())
+
+    mock_get.assert_awaited_once_with(
+        post.endpoint,
+        headers=HEADERS,
+        proxy="http://127.0.0.1:8080",
+        timeout=DEFAULT_TIMEOUT,
+    )
+
+
+@patch("substack_api.post.async_get", new_callable=AsyncMock)
 def test_fetch_post_data_uses_cache(mock_get, sample_post_url, mock_post_data):
     mock_response = MagicMock()
     mock_response.json.return_value = mock_post_data

@@ -55,7 +55,12 @@ class Newsletter:
     Newsletter class for interacting with Substack newsletters
     """
 
-    def __init__(self, url: str, auth: Optional[SubstackAuth] = None) -> None:
+    def __init__(
+        self,
+        url: str,
+        auth: Optional[SubstackAuth] = None,
+        proxy: str | None = None,
+    ) -> None:
         """
         Initialize a Newsletter object.
 
@@ -65,9 +70,12 @@ class Newsletter:
             The URL of the Substack newsletter
         auth : Optional[SubstackAuth]
             Authentication handler for accessing paywalled content
+        proxy : str, optional
+            Proxy URL used for unauthenticated requests
         """
         self.url = url.rstrip("/")
         self.auth = auth
+        self.proxy = proxy
 
     def __str__(self) -> str:
         return f"Newsletter: {self.url}"
@@ -94,7 +102,10 @@ class Newsletter:
         if self.auth and self.auth.authenticated:
             resp = await self.auth.get(endpoint, **kwargs)
         else:
-            resp = await async_get(endpoint, headers=HEADERS, **kwargs)
+            request_kwargs = dict(kwargs)
+            if self.proxy is not None:
+                request_kwargs["proxy"] = self.proxy
+            resp = await async_get(endpoint, headers=HEADERS, **request_kwargs)
 
         await polite_request_delay()
         return resp
@@ -179,7 +190,10 @@ class Newsletter:
 
         params = {"sort": sorting}
         post_data = await self._fetch_paginated_posts(params, limit)
-        return [Post(item["canonical_url"], auth=self.auth) for item in post_data]
+        return [
+            Post(item["canonical_url"], auth=self.auth, proxy=self.proxy)
+            for item in post_data
+        ]
 
     async def search_posts(self, query: str, limit: Optional[int] = None) -> List:
         """
@@ -201,7 +215,10 @@ class Newsletter:
 
         params = {"sort": "new", "search": query}
         post_data = await self._fetch_paginated_posts(params, limit)
-        return [Post(item["canonical_url"], auth=self.auth) for item in post_data]
+        return [
+            Post(item["canonical_url"], auth=self.auth, proxy=self.proxy)
+            for item in post_data
+        ]
 
     async def get_podcasts(self, limit: Optional[int] = None) -> List:
         """
@@ -221,7 +238,10 @@ class Newsletter:
 
         params = {"sort": "new", "type": "podcast"}
         post_data = await self._fetch_paginated_posts(params, limit)
-        return [Post(item["canonical_url"], auth=self.auth) for item in post_data]
+        return [
+            Post(item["canonical_url"], auth=self.auth, proxy=self.proxy)
+            for item in post_data
+        ]
 
     async def _resolve_publication_id(self) -> Optional[int]:
         """
@@ -250,11 +270,16 @@ class Newsletter:
             "skipExplanation": "true",
             "sort": "relevance",
         }
+        request_kwargs = {
+            "params": params,
+            "timeout": DEFAULT_TIMEOUT,
+        }
+        if self.proxy is not None:
+            request_kwargs["proxy"] = self.proxy
         r = await async_get(
             SEARCH_URL,
             headers=DISCOVERY_HEADERS,
-            params=params,
-            timeout=DEFAULT_TIMEOUT,
+            **request_kwargs,
         )
         r.raise_for_status()
         match = _match_publication(r.json(), host)
@@ -292,7 +317,7 @@ class Newsletter:
 
         from .newsletter import Newsletter  # avoid circular import
 
-        return [Newsletter(u, auth=self.auth) for u in urls]
+        return [Newsletter(u, auth=self.auth, proxy=self.proxy) for u in urls]
 
     async def get_authors(self) -> List:
         """
@@ -309,4 +334,4 @@ class Newsletter:
         r = await self._make_request(endpoint, timeout=DEFAULT_TIMEOUT)
         r.raise_for_status()
         authors = r.json()
-        return [User(author["handle"]) for author in authors]
+        return [User(author["handle"], proxy=self.proxy) for author in authors]
