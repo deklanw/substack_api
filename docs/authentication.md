@@ -7,7 +7,7 @@ The Substack API library supports authentication to access paywalled content. Th
 Authentication in the Substack API library works by:
 
 1. Loading session cookies from a JSON file
-2. Using those cookies to make authenticated requests
+2. Using those cookies to make authenticated async HTTP requests
 3. Automatically handling authentication for both `Newsletter` and `Post` objects
 
 ## Setting Up Authentication
@@ -39,16 +39,23 @@ To use authentication, you need to export your browser cookies from a logged-in 
 ### 2. Create Authentication Object
 
 ```python
+import asyncio
+
 from substack_api import SubstackAuth
 
-# Initialize with path to your cookies file
-auth = SubstackAuth(cookies_path="path/to/your/cookies.json")
 
-# Check if authentication was successful
-if auth.authenticated:
-    print("Authentication successful!")
-else:
-    print("Authentication failed - check your cookies file")
+async def main():
+    auth = SubstackAuth(cookies_path="path/to/your/cookies.json")
+    try:
+        if auth.authenticated:
+            print("Authentication successful!")
+        else:
+            print("Authentication failed - check your cookies file")
+    finally:
+        await auth.aclose()
+
+
+asyncio.run(main())
 ```
 
 ## Using Authentication
@@ -56,63 +63,79 @@ else:
 ### With Newsletter Objects
 
 ```python
+import asyncio
+
 from substack_api import Newsletter, SubstackAuth
 
-# Set up authentication
-auth = SubstackAuth(cookies_path="cookies.json")
 
-# Create authenticated newsletter
-newsletter = Newsletter("https://example.substack.com", auth=auth)
+async def main():
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        newsletter = Newsletter("https://example.substack.com", auth=auth)
+        posts = await newsletter.get_posts(limit=10)
 
-# All posts retrieved will use authentication
-posts = newsletter.get_posts(limit=10)
+        for post in posts:
+            if await post.is_paywalled():
+                content = await post.get_content()
+                print(f"Paywalled content: {content[:100]}...")
+    finally:
+        await auth.aclose()
 
-# Access paywalled content
-for post in posts:
-    if post.is_paywalled():
-        content = post.get_content()  # Now accessible with auth
-        print(f"Paywalled content: {content[:100]}...")
+
+asyncio.run(main())
 ```
 
 ### With Post Objects
 
 ```python
+import asyncio
+
 from substack_api import Post, SubstackAuth
 
-# Set up authentication
-auth = SubstackAuth(cookies_path="cookies.json")
 
-# Create authenticated post
-post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
+async def main():
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
 
-# Check if post is paywalled
-if post.is_paywalled():
-    print("This post is paywalled")
+        if await post.is_paywalled():
+            print("This post is paywalled")
 
-# Get content (will use authentication if needed)
-content = post.get_content()
+        content = await post.get_content()
+    finally:
+        await auth.aclose()
+
+
+asyncio.run(main())
 ```
 
 ### Checking Paywall Status
 
 ```python
+import asyncio
+
 from substack_api import Post
 
-# Create post object (no auth needed to check paywall status)
-post = Post("https://example.substack.com/p/some-post")
 
-# Check if authentication is required
-if post.is_paywalled():
-    print("This post requires authentication to access full content")
-    
-    # Now add authentication to access content
-    from substack_api import SubstackAuth
-    auth = SubstackAuth(cookies_path="cookies.json")
-    authenticated_post = Post(post.url, auth=auth)
-    content = authenticated_post.get_content()
-else:
-    # Public content - no authentication needed
-    content = post.get_content()
+async def main():
+    post = Post("https://example.substack.com/p/some-post")
+
+    if await post.is_paywalled():
+        print("This post requires authentication to access full content")
+
+        from substack_api import SubstackAuth
+
+        auth = SubstackAuth(cookies_path="cookies.json")
+        try:
+            authenticated_post = Post(post.url, auth=auth)
+            content = await authenticated_post.get_content()
+        finally:
+            await auth.aclose()
+    else:
+        content = await post.get_content()
+
+
+asyncio.run(main())
 ```
 
 ## How to Get Your Cookies
@@ -144,27 +167,31 @@ You can use browser extensions that export cookies to JSON format. Make sure to:
 ## Error Handling
 
 ```python
+import asyncio
+
 from substack_api import SubstackAuth, Post
 
-try:
-    # Attempt to load authentication
-    auth = SubstackAuth(cookies_path="cookies.json")
-    
-    if not auth.authenticated:
-        print("Warning: Authentication failed, using public access only")
-        auth = None
-    
-    # Use authentication if available
-    post = Post("https://example.substack.com/p/some-post", auth=auth)
-    content = post.get_content()
-    
-    if content is None and post.is_paywalled():
-        print("This content is paywalled and requires authentication")
-    
-except FileNotFoundError:
-    print("Cookies file not found - using public access only")
-    post = Post("https://example.substack.com/p/some-post")
-    content = post.get_content()
+
+async def main():
+    auth = None
+    try:
+        auth = SubstackAuth(cookies_path="cookies.json")
+
+        if not auth.authenticated:
+            print("Warning: Authentication failed, using public access only")
+            auth = None
+
+        post = Post("https://example.substack.com/p/some-post", auth=auth)
+        content = await post.get_content()
+
+        if content is None and await post.is_paywalled():
+            print("This content is paywalled and requires authentication")
+    finally:
+        if auth is not None:
+            await auth.aclose()
+
+
+asyncio.run(main())
 ```
 
 ## API Reference

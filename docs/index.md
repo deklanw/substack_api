@@ -15,28 +15,35 @@ The Substack API library provides a simple interface to interact with Substack n
 ## Quick Start
 
 ```python
+import asyncio
+
 from substack_api import Newsletter, User, Post, Category, SubstackAuth
 
-# Get information about a newsletter
-newsletter = Newsletter("https://example.substack.com")
-posts = newsletter.get_posts(limit=5)
 
-# Get information about a user
-user = User("username")
-subscriptions = user.get_subscriptions()
+async def main():
+    newsletter = Newsletter("https://example.substack.com")
+    posts = await newsletter.get_posts(limit=5)
 
-# Get information about a post
-post = Post("https://example.substack.com/p/post-slug")
-content = post.get_content()
+    user = User("username")
+    subscriptions = await user.get_subscriptions()
 
-# Browse newsletters by category
-tech_category = Category(name="Technology")
-tech_newsletters = tech_category.get_newsletters()
+    post = Post("https://example.substack.com/p/post-slug")
+    content = await post.get_content()
 
-# Access paywalled content with authentication
-auth = SubstackAuth(cookies_path="cookies.json")
-authenticated_post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
-paywalled_content = authenticated_post.get_content()
+    tech_category = await Category.create(name="Technology")
+    tech_newsletters = await tech_category.get_newsletters()
+
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        authenticated_post = Post(
+            "https://example.substack.com/p/paywalled-post", auth=auth
+        )
+        paywalled_content = await authenticated_post.get_content()
+    finally:
+        await auth.aclose()
+
+
+asyncio.run(main())
 ```
 
 ## Features

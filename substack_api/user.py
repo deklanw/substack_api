@@ -2,17 +2,17 @@ import logging
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-import requests
+from curl_cffi import requests as curl_requests
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
-}
+from substack_api._http import DEFAULT_TIMEOUT, HEADERS, async_get
 
 # Setup logger
 logger = logging.getLogger(__name__)
 
 
-def resolve_handle_redirect(old_handle: str, timeout: int = 30) -> Optional[str]:
+async def resolve_handle_redirect(
+    old_handle: str, timeout: float = DEFAULT_TIMEOUT
+) -> Optional[str]:
     """
     Resolve a potentially renamed Substack handle by following redirects.
 
@@ -30,7 +30,7 @@ def resolve_handle_redirect(old_handle: str, timeout: int = 30) -> Optional[str]
     """
     try:
         # Make request to the public profile page with redirects enabled
-        response = requests.get(
+        response = await async_get(
             f"https://substack.com/@{old_handle}",
             headers=HEADERS,
             timeout=timeout,
@@ -56,7 +56,7 @@ def resolve_handle_redirect(old_handle: str, timeout: int = 30) -> Optional[str]
 
         return None
 
-    except requests.RequestException as e:
+    except curl_requests.exceptions.RequestException as e:
         logger.debug(f"Error resolving handle redirect for {old_handle}: {e}")
         return None
 
@@ -105,7 +105,7 @@ class User:
         self.username = new_handle
         self.endpoint = f"https://substack.com/api/v1/user/{new_handle}/public_profile"
 
-    def _fetch_user_data(self, force_refresh: bool = False) -> Dict[str, Any]:
+    async def _fetch_user_data(self, force_refresh: bool = False) -> Dict[str, Any]:
         """
         Fetch the raw user data from the API and cache it.
 
@@ -123,19 +123,19 @@ class User:
 
         Raises
         ------
-        requests.HTTPError
+        curl_cffi.requests.exceptions.HTTPError
             If the user cannot be found even after redirect attempts
         """
         if self._user_data is not None and not force_refresh:
             return self._user_data
 
         try:
-            r = requests.get(self.endpoint, headers=HEADERS, timeout=30)
+            r = await async_get(self.endpoint, headers=HEADERS, timeout=DEFAULT_TIMEOUT)
             r.raise_for_status()
             self._user_data = r.json()
             return self._user_data
 
-        except requests.HTTPError as e:
+        except curl_requests.exceptions.HTTPError as e:
             # Handle 404 errors if we should follow redirects
             if (
                 e.response.status_code == 404
@@ -146,7 +146,7 @@ class User:
                 self._redirect_attempted = True
 
                 # Try to resolve the redirect
-                new_handle = resolve_handle_redirect(self.username)
+                new_handle = await resolve_handle_redirect(self.username)
 
                 if new_handle:
                     # Update our state with the new handle
@@ -154,11 +154,13 @@ class User:
 
                     # Try the request again with the new handle
                     try:
-                        r = requests.get(self.endpoint, headers=HEADERS, timeout=30)
+                        r = await async_get(
+                            self.endpoint, headers=HEADERS, timeout=DEFAULT_TIMEOUT
+                        )
                         r.raise_for_status()
                         self._user_data = r.json()
                         return self._user_data
-                    except requests.HTTPError:
+                    except curl_requests.exceptions.HTTPError:
                         # If it still fails, log and re-raise
                         logger.error(
                             f"Failed to fetch user data even after redirect to {new_handle}"
@@ -173,7 +175,7 @@ class User:
             # Re-raise the original error
             raise
 
-    def get_raw_data(self, force_refresh: bool = False) -> Dict[str, Any]:
+    async def get_raw_data(self, force_refresh: bool = False) -> Dict[str, Any]:
         """
         Get the complete raw user data.
 
@@ -187,7 +189,12 @@ class User:
         Dict[str, Any]
             Full user profile data
         """
-        return self._fetch_user_data(force_refresh=force_refresh)
+        return await self._fetch_user_data(force_refresh=force_refresh)
+
+    def _require_user_data(self) -> Dict[str, Any]:
+        if self._user_data is None:
+            raise RuntimeError("User data has not been loaded. Await get_raw_data() first.")
+        return self._user_data
 
     @property
     def id(self) -> int:
@@ -199,7 +206,7 @@ class User:
         int
             The user's ID
         """
-        data = self._fetch_user_data()
+        data = self._require_user_data()
         return data["id"]
 
     @property
@@ -212,7 +219,7 @@ class User:
         str
             The user's name
         """
-        data = self._fetch_user_data()
+        data = self._require_user_data()
         return data["name"]
 
     @property
@@ -225,7 +232,7 @@ class User:
         str
             Profile setup timestamp
         """
-        data = self._fetch_user_data()
+        data = self._require_user_data()
         return data["profile_set_up_at"]
 
     @property
@@ -240,7 +247,7 @@ class User:
         """
         return self.username != self.original_username
 
-    def get_subscriptions(self) -> List[Dict[str, Any]]:
+    async def get_subscriptions(self) -> List[Dict[str, Any]]:
         """
         Get newsletters the user has subscribed to
 
@@ -249,7 +256,7 @@ class User:
         List[Dict[str, Any]]
             List of publications the user subscribes to with domain info
         """
-        data = self._fetch_user_data()
+        data = await self._fetch_user_data()
         subscriptions = []
 
         for sub in data.get("subscriptions", []):

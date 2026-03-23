@@ -20,8 +20,8 @@ Whether the authentication was successful and cookies were loaded.
 ### `cookies_path` (str)
 Path to the cookies file.
 
-### `session` (requests.Session)
-The authenticated requests session object.
+### `session` (`curl_cffi.requests.AsyncSession`)
+The authenticated async HTTP client.
 
 ## Methods
 
@@ -33,31 +33,35 @@ Load cookies from the specified file.
 
 - `bool`: True if cookies were loaded successfully, False otherwise
 
-### `get(url: str, **kwargs) -> requests.Response`
+### `await get(url: str, **kwargs) -> curl_cffi.requests.Response`
 
 Make an authenticated GET request.
 
 #### Parameters
 
 - `url` (str): The URL to request
-- `**kwargs`: Additional arguments passed to requests.get
+- `**kwargs`: Additional arguments passed to `curl_cffi.requests.AsyncSession.get`
 
 #### Returns
 
-- `requests.Response`: The response object
+- `curl_cffi.requests.Response`: The response object
 
-### `post(url: str, **kwargs) -> requests.Response`
+### `await post(url: str, **kwargs) -> curl_cffi.requests.Response`
 
 Make an authenticated POST request.
 
 #### Parameters
 
 - `url` (str): The URL to request
-- `**kwargs`: Additional arguments passed to requests.post
+- `**kwargs`: Additional arguments passed to `curl_cffi.requests.AsyncSession.post`
 
 #### Returns
 
-- `requests.Response`: The response object
+- `curl_cffi.requests.Response`: The response object
+
+### `await aclose() -> None`
+
+Close the underlying async HTTP client.
 
 ## Example Usage
 
@@ -79,36 +83,49 @@ else:
 ### Using with Newsletter and Post Classes
 
 ```python
+import asyncio
+
 from substack_api import Newsletter, Post, SubstackAuth
 
-# Set up authentication
-auth = SubstackAuth(cookies_path="cookies.json")
 
-# Use with Newsletter
-newsletter = Newsletter("https://example.substack.com", auth=auth)
-posts = newsletter.get_posts(limit=5)
+async def main():
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        newsletter = Newsletter("https://example.substack.com", auth=auth)
+        posts = await newsletter.get_posts(limit=5)
 
-# Use with Post
-post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
-content = post.get_content()
+        post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
+        content = await post.get_content()
+    finally:
+        await auth.aclose()
+
+
+asyncio.run(main())
 ```
 
 ### Manual Authenticated Requests
 
 ```python
+import asyncio
+
 from substack_api import SubstackAuth
 
-auth = SubstackAuth(cookies_path="cookies.json")
 
-# Make authenticated GET request
-response = auth.get("https://example.substack.com/api/v1/posts/123")
-data = response.json()
+async def main():
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        response = await auth.get("https://example.substack.com/api/v1/posts/123")
+        data = response.json()
 
-# Make authenticated POST request
-response = auth.post(
-    "https://example.substack.com/api/v1/some-endpoint",
-    json={"key": "value"}
-)
+        response = await auth.post(
+            "https://example.substack.com/api/v1/some-endpoint",
+            json={"key": "value"},
+        )
+    finally:
+        await auth.aclose()
+
+
+asyncio.run(main())
 ```
 
 ## Cookie File Format

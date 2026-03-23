@@ -11,31 +11,29 @@ The Substack API library is organized around five main classes:
 - `SubstackAuth` - Handles authentication for accessing paywalled content
 
 Each class provides methods to access different aspects of the Substack ecosystem.
+All network-bound methods are asynchronous and should be awaited.
 
 ## Working with Newsletters
 
 The `Newsletter` class is the main entry point for interacting with Substack publications:
 
 ```python
+import asyncio
+
 from substack_api import Newsletter
 
-# Create a newsletter object
-newsletter = Newsletter("https://example.substack.com")
 
-# Get recent posts
-recent_posts = newsletter.get_posts(limit=10)
+async def main():
+    newsletter = Newsletter("https://example.substack.com")
 
-# Search for posts on a specific topic
-search_results = newsletter.search_posts("artificial intelligence")
+    recent_posts = await newsletter.get_posts(limit=10)
+    search_results = await newsletter.search_posts("artificial intelligence")
+    podcasts = await newsletter.get_podcasts()
+    authors = await newsletter.get_authors()
+    recommendations = await newsletter.get_recommendations()
 
-# Get podcast episodes
-podcasts = newsletter.get_podcasts()
 
-# Get newsletter authors
-authors = newsletter.get_authors()
-
-# Get recommended newsletters
-recommendations = newsletter.get_recommendations()
+asyncio.run(main())
 ```
 
 ### Accessing Paywalled Newsletter Content
@@ -43,22 +41,26 @@ recommendations = newsletter.get_recommendations()
 To access paywalled posts from a newsletter, provide authentication:
 
 ```python
+import asyncio
+
 from substack_api import Newsletter, SubstackAuth
 
-# Set up authentication
-auth = SubstackAuth(cookies_path="cookies.json")
 
-# Create authenticated newsletter
-newsletter = Newsletter("https://example.substack.com", auth=auth)
+async def main():
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        newsletter = Newsletter("https://example.substack.com", auth=auth)
+        posts = await newsletter.get_posts(limit=10)
 
-# All retrieved posts will use authentication
-posts = newsletter.get_posts(limit=10)
+        for post in posts:
+            if await post.is_paywalled():
+                content = await post.get_content()
+                print(f"Paywalled content: {content[:100]}...")
+    finally:
+        await auth.aclose()
 
-# Access content from paywalled posts
-for post in posts:
-    if post.is_paywalled():
-        content = post.get_content()  # Now accessible with auth
-        print(f"Paywalled content: {content[:100]}...")
+
+asyncio.run(main())
 ```
 
 ## Working with Users
@@ -66,27 +68,25 @@ for post in posts:
 The `User` class allows you to access information about Substack users:
 
 ```python
+import asyncio
+
 from substack_api import User
 
-# Create a user object
-user = User("username")
 
-# Create a user object without redirect handling (if a handle has been renamed)
-user = User("username", follow_redirects=False)
+async def main():
+    user = User("username")
+    user_no_redirect = User("username", follow_redirects=False)
 
-# Get basic user information
-user_id = user.id
-name = user.name
+    user_data = await user.get_raw_data()
+    user_id = user.id
+    name = user.name
+    subscriptions = await user.get_subscriptions()
 
-# Get the user's subscriptions
-subscriptions = user.get_subscriptions()
+    if user.was_redirected:
+        print(f"Original handle '{user.original_username}' was redirected to '{user.username}'")
 
-# Get raw user data
-user_data = user.get_raw_data()
 
-# Check if the user was redirected (handle was renamed)
-if user.was_redirected:
-    print(f"Original handle '{user.original_username}' was redirected to '{user.username}'")
+asyncio.run(main())
 ```
 
 ### Handle Redirects
@@ -107,20 +107,22 @@ if user.was_redirected:
 The `Post` class allows you to access information about individual Substack posts:
 
 ```python
+import asyncio
+
 from substack_api import Post
 
-# Create a post object
-post = Post("https://example.substack.com/p/post-slug")
 
-# Get post content
-content = post.get_content()
+async def main():
+    post = Post("https://example.substack.com/p/post-slug")
 
-# Get post metadata
-metadata = post.get_metadata()
+    content = await post.get_content()
+    metadata = await post.get_metadata()
 
-# Check if post is paywalled
-if post.is_paywalled():
-    print("This post requires a subscription")
+    if await post.is_paywalled():
+        print("This post requires a subscription")
+
+
+asyncio.run(main())
 ```
 
 ### Accessing Paywalled Content
@@ -128,16 +130,21 @@ if post.is_paywalled():
 To access paywalled content, you need to provide authentication:
 
 ```python
+import asyncio
+
 from substack_api import Post, SubstackAuth
 
-# Set up authentication
-auth = SubstackAuth(cookies_path="cookies.json")
 
-# Create authenticated post
-post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
+async def main():
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
+        content = await post.get_content()
+    finally:
+        await auth.aclose()
 
-# Now you can access paywalled content
-content = post.get_content()
+
+asyncio.run(main())
 ```
 
 ## Working with Categories
@@ -145,22 +152,24 @@ content = post.get_content()
 The `Category` class allows you to discover newsletters by category:
 
 ```python
+import asyncio
+
 from substack_api import Category
 
-# List all available categories
 from substack_api.category import list_all_categories
-categories = list_all_categories()
 
-# Create a category object
-category = Category(name="Technology")
-# Or by ID
-category = Category(id=12)
 
-# Get newsletters in this category
-newsletters = category.get_newsletters()
+async def main():
+    categories = await list_all_categories()
 
-# Get full metadata for newsletters in this category
-newsletter_metadata = category.get_newsletter_metadata()
+    category = await Category.create(name="Technology")
+    category_by_id = await Category.create(id=12)
+
+    newsletters = await category.get_newsletters()
+    newsletter_metadata = await category.get_newsletter_metadata()
+
+
+asyncio.run(main())
 ```
 
 ## Authentication
@@ -168,14 +177,21 @@ newsletter_metadata = category.get_newsletter_metadata()
 The library supports authentication to access paywalled content. See the [Authentication Guide](authentication.md) for detailed information on setting up and using authentication.
 
 ```python
-from substack_api import SubstackAuth
+import asyncio
 
-# Set up authentication
-auth = SubstackAuth(cookies_path="cookies.json")
+from substack_api import Newsletter, Post, SubstackAuth
 
-# Use with any class that supports authentication
-newsletter = Newsletter("https://example.substack.com", auth=auth)
-post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
+
+async def main():
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        newsletter = Newsletter("https://example.substack.com", auth=auth)
+        post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
+    finally:
+        await auth.aclose()
+
+
+asyncio.run(main())
 ```
 
 ## Caching Behavior
@@ -183,9 +199,11 @@ post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
 By default, the library caches API responses to minimize the number of requests. You can force a refresh of the data by passing `force_refresh=True` to relevant methods:
 
 ```python
+import asyncio
+
 # Force refresh of post data
-post.get_metadata(force_refresh=True)
+asyncio.run(post.get_metadata(force_refresh=True))
 
 # Force refresh of user data
-user.get_raw_data(force_refresh=True)
+asyncio.run(user.get_raw_data(force_refresh=True))
 ```

@@ -7,7 +7,7 @@ name = "substack-api"
 description = "Unofficial wrapper for the Substack API"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["requests>=2.32.3"]
+dependencies = ["curl-cffi>=0.14.0"]
 dynamic = ["version"]
 
 [dependency-groups]

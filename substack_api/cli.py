@@ -1,6 +1,7 @@
 """Command-line interface for substack_api."""
 
 import argparse
+import asyncio
 import json
 import sys
 from typing import Any
@@ -194,7 +195,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _dispatch(args: argparse.Namespace) -> None:
+async def _dispatch(args: argparse.Namespace) -> None:
     """Dispatch to the appropriate handler based on parsed args."""
     pretty = args.pretty
 
@@ -208,27 +209,34 @@ def _dispatch(args: argparse.Namespace) -> None:
 
     if args.command == "newsletter":
         if not args.subcommand:
-            print("Usage: substack newsletter {posts,search,podcasts,recs,authors}", file=sys.stderr)
+            print(
+                "Usage: substack newsletter {posts,search,podcasts,recs,authors}",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         auth = _get_auth(args.cookies)
-        nl = Newsletter(args.url, auth=auth)
+        try:
+            nl = Newsletter(args.url, auth=auth)
 
-        if args.subcommand == "posts":
-            posts = nl.get_posts(sorting=args.sort, limit=args.limit)
-            _json_out([{"url": p.url} for p in posts], pretty)
-        elif args.subcommand == "search":
-            posts = nl.search_posts(query=args.query, limit=args.limit)
-            _json_out([{"url": p.url} for p in posts], pretty)
-        elif args.subcommand == "podcasts":
-            posts = nl.get_podcasts(limit=args.limit)
-            _json_out([{"url": p.url} for p in posts], pretty)
-        elif args.subcommand == "recs":
-            recs = nl.get_recommendations()
-            _json_out([{"url": r.url} for r in recs], pretty)
-        elif args.subcommand == "authors":
-            authors = nl.get_authors()
-            _json_out([{"username": a.username} for a in authors], pretty)
+            if args.subcommand == "posts":
+                posts = await nl.get_posts(sorting=args.sort, limit=args.limit)
+                _json_out([{"url": p.url} for p in posts], pretty)
+            elif args.subcommand == "search":
+                posts = await nl.search_posts(query=args.query, limit=args.limit)
+                _json_out([{"url": p.url} for p in posts], pretty)
+            elif args.subcommand == "podcasts":
+                posts = await nl.get_podcasts(limit=args.limit)
+                _json_out([{"url": p.url} for p in posts], pretty)
+            elif args.subcommand == "recs":
+                recs = await nl.get_recommendations()
+                _json_out([{"url": r.url} for r in recs], pretty)
+            elif args.subcommand == "authors":
+                authors = await nl.get_authors()
+                _json_out([{"username": a.username} for a in authors], pretty)
+        finally:
+            if auth is not None:
+                await auth.aclose()
         return
 
     if args.command == "post":
@@ -237,14 +245,18 @@ def _dispatch(args: argparse.Namespace) -> None:
             sys.exit(1)
 
         auth = _get_auth(args.cookies)
-        post = Post(args.url, auth=auth)
+        try:
+            post = Post(args.url, auth=auth)
 
-        if args.subcommand == "metadata":
-            _json_out(post.get_metadata(), pretty)
-        elif args.subcommand == "content":
-            _json_out({"url": post.url, "html": post.get_content()}, pretty)
-        elif args.subcommand == "paywalled":
-            _json_out({"url": post.url, "paywalled": post.is_paywalled()}, pretty)
+            if args.subcommand == "metadata":
+                _json_out(await post.get_metadata(), pretty)
+            elif args.subcommand == "content":
+                _json_out({"url": post.url, "html": await post.get_content()}, pretty)
+            elif args.subcommand == "paywalled":
+                _json_out({"url": post.url, "paywalled": await post.is_paywalled()}, pretty)
+        finally:
+            if auth is not None:
+                await auth.aclose()
         return
 
     if args.command == "user":
@@ -255,13 +267,13 @@ def _dispatch(args: argparse.Namespace) -> None:
         user = User(args.username)
 
         if args.subcommand == "info":
-            _json_out(user.get_raw_data(), pretty)
+            _json_out(await user.get_raw_data(), pretty)
         elif args.subcommand == "subscriptions":
-            _json_out(user.get_subscriptions(), pretty)
+            _json_out(await user.get_subscriptions(), pretty)
         return
 
     if args.command == "categories":
-        cats = list_all_categories()
+        cats = await list_all_categories()
         _json_out([{"name": name, "id": id} for name, id in cats], pretty)
         return
 
@@ -270,17 +282,17 @@ def _dispatch(args: argparse.Namespace) -> None:
             print("Usage: substack category {newsletters}", file=sys.stderr)
             sys.exit(1)
 
-        cat = Category(name=args.name, id=args.id)
+        cat = await Category.create(name=args.name, id=args.id)
 
         if args.subcommand == "newsletters":
             if args.metadata:
-                _json_out(cat.get_newsletter_metadata(), pretty)
+                _json_out(await cat.get_newsletter_metadata(), pretty)
             else:
-                _json_out(cat.get_newsletter_urls(), pretty)
+                _json_out(await cat.get_newsletter_urls(), pretty)
         return
 
     if args.command == "resolve-handle":
-        result = resolve_handle_redirect(args.handle)
+        result = await resolve_handle_redirect(args.handle)
         _json_out({"old_handle": args.handle, "new_handle": result}, pretty)
         return
 
@@ -295,7 +307,7 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        _dispatch(args)
+        asyncio.run(_dispatch(args))
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

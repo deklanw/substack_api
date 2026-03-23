@@ -4,7 +4,7 @@ The `Category` class provides access to Substack newsletter categories.
 
 ## Module Functions
 
-### `list_all_categories() -> List[Tuple[str, int]]`
+### `await list_all_categories() -> List[Tuple[str, int]]`
 
 Get name/id representations of all newsletter categories.
 
@@ -25,11 +25,15 @@ Category(name: Optional[str] = None, id: Optional[int] = None)
 
 ### Raises
 
-- `ValueError`: If neither name nor id is provided, or if the provided name/id is not found
+- `ValueError`: If neither name nor id is provided
 
 ## Methods
 
-### `_get_id_from_name() -> None`
+### `await create(name: Optional[str] = None, id: Optional[int] = None) -> Category`
+
+Resolve the missing category identifier or name asynchronously and return a ready-to-use `Category`.
+
+### `await _get_id_from_name() -> None`
 
 Lookup category ID based on name.
 
@@ -37,7 +41,7 @@ Lookup category ID based on name.
 
 - `ValueError`: If the category name is not found
 
-### `_get_name_from_id() -> None`
+### `await _get_name_from_id() -> None`
 
 Lookup category name based on ID.
 
@@ -45,7 +49,7 @@ Lookup category name based on ID.
 
 - `ValueError`: If the category ID is not found
 
-### `_fetch_newsletters_data(force_refresh: bool = False) -> List[Dict[str, Any]]`
+### `await _fetch_newsletters_data(force_refresh: bool = False) -> List[Dict[str, Any]]`
 
 Fetch the raw newsletter data from the API and cache it.
 
@@ -57,7 +61,7 @@ Fetch the raw newsletter data from the API and cache it.
 
 - `List[Dict[str, Any]]`: Full newsletter metadata
 
-### `get_newsletter_urls() -> List[str]`
+### `await get_newsletter_urls() -> List[str]`
 
 Get only the URLs of newsletters in this category.
 
@@ -65,7 +69,7 @@ Get only the URLs of newsletters in this category.
 
 - `List[str]`: List of newsletter URLs
 
-### `get_newsletters() -> List[Newsletter]`
+### `await get_newsletters() -> List[Newsletter]`
 
 Get Newsletter objects for all newsletters in this category.
 
@@ -73,7 +77,7 @@ Get Newsletter objects for all newsletters in this category.
 
 - `List[Newsletter]`: List of Newsletter objects
 
-### `get_newsletter_metadata() -> List[Dict[str, Any]]`
+### `await get_newsletter_metadata() -> List[Dict[str, Any]]`
 
 Get full metadata for all newsletters in this category.
 
@@ -81,38 +85,40 @@ Get full metadata for all newsletters in this category.
 
 - `List[Dict[str, Any]]`: List of newsletter metadata dictionaries
 
-### `refresh_data() -> None`
+### `await refresh_data() -> None`
 
 Force refresh of the newsletter data cache.
 
 ## Example Usage
 
 ```python
+import asyncio
+
 from substack_api import Category
 from substack_api.category import list_all_categories
 
-# List all available categories
-categories = list_all_categories()
-print("Available categories:")
-for name, id in categories:
-    print(f"- {name} (ID: {id})")
 
-# Create a category object by name
-tech_category = Category(name="Technology")
-print(f"Selected category: {tech_category}")
+async def main():
+    categories = await list_all_categories()
+    print("Available categories:")
+    for name, id in categories:
+        print(f"- {name} (ID: {id})")
 
-# Get newsletters in this category
-newsletters = tech_category.get_newsletters()
-print(f"Found {len(newsletters)} newsletters in {tech_category.name} category")
+    tech_category = await Category.create(name="Technology")
+    print(f"Selected category: {tech_category}")
 
-# Print the first 5 newsletters
-for i, newsletter in enumerate(newsletters[:5]):
-    print(f"{i+1}. {newsletter.url}")
+    newsletters = await tech_category.get_newsletters()
+    print(f"Found {len(newsletters)} newsletters in {tech_category.name} category")
 
-# Get detailed metadata
-metadata = tech_category.get_newsletter_metadata()
-for entry in metadata[:3]:
-    print(f"Newsletter ID: {entry['id']}")
-    print(f"Description: {entry.get('description', 'No description')[:100]}...")
-    print("-" * 40)
+    for i, newsletter in enumerate(newsletters[:5]):
+        print(f"{i+1}. {newsletter.url}")
+
+    metadata = await tech_category.get_newsletter_metadata()
+    for entry in metadata[:3]:
+        print(f"Newsletter ID: {entry['id']}")
+        print(f"Description: {entry.get('description', 'No description')[:100]}...")
+        print("-" * 40)
+
+
+asyncio.run(main())
 ```

@@ -1,7 +1,11 @@
 import json
 import os
+from collections.abc import Sequence
+from typing import Any
 
-import requests
+from curl_cffi import requests as curl_requests
+
+from substack_api._http import BROWSER_IMPERSONATE, JSON_HEADERS
 
 
 class SubstackAuth:
@@ -20,22 +24,15 @@ class SubstackAuth:
             Path to retrieve session cookies from
         """
         self.cookies_path = cookies_path
-        self.session = requests.Session()
-        self.authenticated = False
-
-        # Set default headers
-        self.session.headers.update(
-            {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36",
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            }
+        self.session = curl_requests.AsyncSession(
+            headers=JSON_HEADERS,
+            impersonate=BROWSER_IMPERSONATE,
         )
+        self.authenticated = False
 
         # Try to load existing cookies
         if os.path.exists(self.cookies_path):
-            self.load_cookies()
-            self.authenticated = True
+            self.authenticated = self.load_cookies()
         else:
             print(f"Cookies file not found at {self.cookies_path}. Please log in.")
             self.authenticated = False
@@ -52,7 +49,10 @@ class SubstackAuth:
         """
         try:
             with open(self.cookies_path, "r") as f:
-                cookies = json.load(f)
+                raw_cookies = json.load(f)
+
+            cookies = self._normalize_cookies(raw_cookies)
+            self.session.cookies.clear()
 
             for cookie in cookies:
                 self.session.cookies.set(
@@ -60,16 +60,35 @@ class SubstackAuth:
                     cookie["value"],
                     domain=cookie.get("domain"),
                     path=cookie.get("path", "/"),
-                    secure=cookie.get("secure", False),
                 )
 
             return True
 
         except Exception as e:
             print(f"Failed to load cookies: {str(e)}")
+            self.authenticated = False
+            self.session.cookies.clear()
             return False
 
-    def get(self, url: str, **kwargs) -> requests.Response:
+    @staticmethod
+    def _normalize_cookies(raw_cookies: Any) -> list[dict[str, Any]]:
+        if isinstance(raw_cookies, dict):
+            return [
+                {"name": name, **cookie_data}
+                for name, cookie_data in raw_cookies.items()
+                if isinstance(cookie_data, dict)
+            ]
+
+        if isinstance(raw_cookies, Sequence) and not isinstance(raw_cookies, (str, bytes)):
+            return [
+                cookie
+                for cookie in raw_cookies
+                if isinstance(cookie, dict) and "name" in cookie and "value" in cookie
+            ]
+
+        raise ValueError("Cookies file must contain a dict or list of cookie objects")
+
+    async def get(self, url: str, **kwargs) -> curl_requests.Response:
         """
         Make authenticated GET request.
 
@@ -78,16 +97,16 @@ class SubstackAuth:
         url : str
             URL to request
         **kwargs
-            Additional arguments to pass to requests.get
+            Additional arguments to pass to curl_cffi AsyncSession.get
 
         Returns
         -------
-        requests.Response
+        curl_cffi.requests.Response
             Response object
         """
-        return self.session.get(url, **kwargs)
+        return await self.session.get(url, **kwargs)
 
-    def post(self, url: str, **kwargs) -> requests.Response:
+    async def post(self, url: str, **kwargs) -> curl_requests.Response:
         """
         Make authenticated POST request.
 
@@ -96,11 +115,20 @@ class SubstackAuth:
         url : str
             URL to request
         **kwargs
-            Additional arguments to pass to requests.post
+            Additional arguments to pass to curl_cffi AsyncSession.post
 
         Returns
         -------
-        requests.Response
+        curl_cffi.requests.Response
             Response object
         """
-        return self.session.post(url, **kwargs)
+        return await self.session.post(url, **kwargs)
+
+    async def aclose(self) -> None:
+        await self.session.close()
+
+    async def __aenter__(self) -> "SubstackAuth":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.aclose()

@@ -15,7 +15,7 @@ User(username: str, follow_redirects: bool = True)
 
 ## Methods
 
-### `_fetch_user_data(force_refresh: bool = False) -> Dict[str, Any]`
+### `await _fetch_user_data(force_refresh: bool = False) -> Dict[str, Any]`
 
 Fetch the raw user data from the API and cache it. Handles renamed accounts by following redirects when `follow_redirects` is True.
 
@@ -29,9 +29,9 @@ Fetch the raw user data from the API and cache it. Handles renamed accounts by f
 
 #### Raises
 
-- `requests.HTTPError`: If the user cannot be found even after redirect attempts
+- `curl_cffi.requests.exceptions.HTTPError`: If the user cannot be found even after redirect attempts
 
-### `get_raw_data(force_refresh: bool = False) -> Dict[str, Any]`
+### `await get_raw_data(force_refresh: bool = False) -> Dict[str, Any]`
 
 Get the complete raw user data.
 
@@ -43,7 +43,7 @@ Get the complete raw user data.
 
 - `Dict[str, Any]`: Full user profile data
 
-### `get_subscriptions() -> List[Dict[str, Any]]`
+### `await get_subscriptions() -> List[Dict[str, Any]]`
 
 Get newsletters the user has subscribed to.
 
@@ -83,7 +83,7 @@ Check if this user's handle was redirected from the original.
 
 ## Helper Functions
 
-### `resolve_handle_redirect(old_handle: str, timeout: int = 30) -> Optional[str]`
+### `await resolve_handle_redirect(old_handle: str, timeout: int = 30) -> Optional[str]`
 
 Resolve a potentially renamed Substack handle by following redirects.
 
@@ -99,33 +99,33 @@ Resolve a potentially renamed Substack handle by following redirects.
 ## Example Usage
 
 ```python
+import asyncio
+
 from substack_api import User
 
-# Create a user object (automatically handles redirects)
-user = User("username")
 
-# Create a user object without redirect handling
-user_no_redirect = User("username", follow_redirects=False)
+async def main():
+    user = User("username")
+    user_no_redirect = User("username", follow_redirects=False)
 
-# Get basic user information
-print(f"User ID: {user.id}")
-print(f"Name: {user.name}")
-print(f"Profile created: {user.profile_set_up_at}")
+    user_data = await user.get_raw_data()
+    print(f"User ID: {user.id}")
+    print(f"Name: {user.name}")
+    print(f"Profile created: {user.profile_set_up_at}")
 
-# Check if the user was redirected (handle was renamed)
-if user.was_redirected:
-    print(f"Original handle '{user.original_username}' was redirected to '{user.username}'")
+    if user.was_redirected:
+        print(
+            f"Original handle '{user.original_username}' was redirected to '{user.username}'"
+        )
 
-# Get the user's subscriptions
-subscriptions = user.get_subscriptions()
+    subscriptions = await user.get_subscriptions()
 
-# Get raw user data
-user_data = user.get_raw_data()
+    from substack_api.user import resolve_handle_redirect
 
-# Using the standalone redirect resolver
-from substack_api.user import resolve_handle_redirect
+    new_handle = await resolve_handle_redirect("old_username")
+    if new_handle:
+        print(f"The handle has been renamed to: {new_handle}")
 
-new_handle = resolve_handle_redirect("old_username")
-if new_handle:
-    print(f"The handle has been renamed to: {new_handle}")
+
+asyncio.run(main())
 ```

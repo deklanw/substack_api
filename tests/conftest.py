@@ -1,3 +1,6 @@
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 
@@ -53,3 +56,15 @@ def mock_post_content():
         "audience": "everyone",
         "comments_count": 5,
     }
+
+
+@pytest.fixture(autouse=True)
+def no_request_delay():
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch("substack_api.newsletter.polite_request_delay", new=AsyncMock())
+        )
+        stack.enter_context(
+            patch("substack_api.category.polite_request_delay", new=AsyncMock())
+        )
+        yield

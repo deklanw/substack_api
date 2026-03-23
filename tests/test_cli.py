@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -133,15 +133,19 @@ class TestBuildParser:
     def test_global_cookies_option(self):
         parser = _build_parser()
         args = parser.parse_args(
-            ["--cookies", "my_cookies.json", "newsletter", "posts", "https://x.substack.com"]
+            [
+                "--cookies",
+                "my_cookies.json",
+                "newsletter",
+                "posts",
+                "https://x.substack.com",
+            ]
         )
         assert args.cookies == "my_cookies.json"
 
     def test_global_pretty_option(self):
         parser = _build_parser()
-        args = parser.parse_args(
-            ["--pretty", "categories"]
-        )
+        args = parser.parse_args(["--pretty", "categories"])
         assert args.pretty is True
 
     def test_quickstart_args(self):
@@ -186,25 +190,40 @@ class TestNewsletterCommands:
     def test_posts_output(self, MockNewsletter, capsys):
         mock_post = MagicMock()
         mock_post.url = "https://example.substack.com/p/test"
-        MockNewsletter.return_value.get_posts.return_value = [mock_post]
+        MockNewsletter.return_value.get_posts = AsyncMock(return_value=[mock_post])
 
-        with patch("sys.argv", ["substack", "newsletter", "posts", "https://example.substack.com"]):
+        with patch(
+            "sys.argv",
+            ["substack", "newsletter", "posts", "https://example.substack.com"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
         assert data == [{"url": "https://example.substack.com/p/test"}]
-        MockNewsletter.return_value.get_posts.assert_called_once_with(
+        MockNewsletter.return_value.get_posts.assert_awaited_once_with(
             sorting="new", limit=None
         )
 
     @patch("substack_api.cli.Newsletter")
     def test_posts_with_sort_and_limit(self, MockNewsletter, capsys):
-        MockNewsletter.return_value.get_posts.return_value = []
+        MockNewsletter.return_value.get_posts = AsyncMock(return_value=[])
 
-        with patch("sys.argv", ["substack", "newsletter", "posts", "https://x.substack.com", "--sort", "top", "--limit", "3"]):
+        with patch(
+            "sys.argv",
+            [
+                "substack",
+                "newsletter",
+                "posts",
+                "https://x.substack.com",
+                "--sort",
+                "top",
+                "--limit",
+                "3",
+            ],
+        ):
             main()
 
-        MockNewsletter.return_value.get_posts.assert_called_once_with(
+        MockNewsletter.return_value.get_posts.assert_awaited_once_with(
             sorting="top", limit=3
         )
 
@@ -212,22 +231,34 @@ class TestNewsletterCommands:
     def test_search_output(self, MockNewsletter, capsys):
         mock_post = MagicMock()
         mock_post.url = "https://example.substack.com/p/result"
-        MockNewsletter.return_value.search_posts.return_value = [mock_post]
+        MockNewsletter.return_value.search_posts = AsyncMock(return_value=[mock_post])
 
-        with patch("sys.argv", ["substack", "newsletter", "search", "https://example.substack.com", "test query"]):
+        with patch(
+            "sys.argv",
+            [
+                "substack",
+                "newsletter",
+                "search",
+                "https://example.substack.com",
+                "test query",
+            ],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
         assert data == [{"url": "https://example.substack.com/p/result"}]
-        MockNewsletter.return_value.search_posts.assert_called_once_with(
+        MockNewsletter.return_value.search_posts.assert_awaited_once_with(
             query="test query", limit=None
         )
 
     @patch("substack_api.cli.Newsletter")
     def test_podcasts_output(self, MockNewsletter, capsys):
-        MockNewsletter.return_value.get_podcasts.return_value = []
+        MockNewsletter.return_value.get_podcasts = AsyncMock(return_value=[])
 
-        with patch("sys.argv", ["substack", "newsletter", "podcasts", "https://x.substack.com"]):
+        with patch(
+            "sys.argv",
+            ["substack", "newsletter", "podcasts", "https://x.substack.com"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
@@ -237,9 +268,14 @@ class TestNewsletterCommands:
     def test_recs_output(self, MockNewsletter, capsys):
         mock_nl = MagicMock()
         mock_nl.url = "https://rec.substack.com"
-        MockNewsletter.return_value.get_recommendations.return_value = [mock_nl]
+        MockNewsletter.return_value.get_recommendations = AsyncMock(
+            return_value=[mock_nl]
+        )
 
-        with patch("sys.argv", ["substack", "newsletter", "recs", "https://x.substack.com"]):
+        with patch(
+            "sys.argv",
+            ["substack", "newsletter", "recs", "https://x.substack.com"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
@@ -249,9 +285,12 @@ class TestNewsletterCommands:
     def test_authors_output(self, MockNewsletter, capsys):
         mock_user = MagicMock()
         mock_user.username = "author1"
-        MockNewsletter.return_value.get_authors.return_value = [mock_user]
+        MockNewsletter.return_value.get_authors = AsyncMock(return_value=[mock_user])
 
-        with patch("sys.argv", ["substack", "newsletter", "authors", "https://x.substack.com"]):
+        with patch(
+            "sys.argv",
+            ["substack", "newsletter", "authors", "https://x.substack.com"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
@@ -261,11 +300,14 @@ class TestNewsletterCommands:
 class TestPostCommands:
     @patch("substack_api.cli.Post")
     def test_metadata_output(self, MockPost, capsys):
-        MockPost.return_value.get_metadata.return_value = {
-            "title": "Test", "id": 123
-        }
+        MockPost.return_value.get_metadata = AsyncMock(
+            return_value={"title": "Test", "id": 123}
+        )
 
-        with patch("sys.argv", ["substack", "post", "metadata", "https://x.substack.com/p/test"]):
+        with patch(
+            "sys.argv",
+            ["substack", "post", "metadata", "https://x.substack.com/p/test"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
@@ -274,9 +316,12 @@ class TestPostCommands:
     @patch("substack_api.cli.Post")
     def test_content_output(self, MockPost, capsys):
         MockPost.return_value.url = "https://x.substack.com/p/test"
-        MockPost.return_value.get_content.return_value = "<p>Hello</p>"
+        MockPost.return_value.get_content = AsyncMock(return_value="<p>Hello</p>")
 
-        with patch("sys.argv", ["substack", "post", "content", "https://x.substack.com/p/test"]):
+        with patch(
+            "sys.argv",
+            ["substack", "post", "content", "https://x.substack.com/p/test"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
@@ -285,9 +330,12 @@ class TestPostCommands:
     @patch("substack_api.cli.Post")
     def test_paywalled_output(self, MockPost, capsys):
         MockPost.return_value.url = "https://x.substack.com/p/test"
-        MockPost.return_value.is_paywalled.return_value = True
+        MockPost.return_value.is_paywalled = AsyncMock(return_value=True)
 
-        with patch("sys.argv", ["substack", "post", "paywalled", "https://x.substack.com/p/test"]):
+        with patch(
+            "sys.argv",
+            ["substack", "post", "paywalled", "https://x.substack.com/p/test"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
@@ -297,9 +345,9 @@ class TestPostCommands:
 class TestUserCommands:
     @patch("substack_api.cli.User")
     def test_info_output(self, MockUser, capsys):
-        MockUser.return_value.get_raw_data.return_value = {
-            "id": 1, "name": "Test User"
-        }
+        MockUser.return_value.get_raw_data = AsyncMock(
+            return_value={"id": 1, "name": "Test User"}
+        )
 
         with patch("sys.argv", ["substack", "user", "info", "testuser"]):
             main()
@@ -309,9 +357,9 @@ class TestUserCommands:
 
     @patch("substack_api.cli.User")
     def test_subscriptions_output(self, MockUser, capsys):
-        MockUser.return_value.get_subscriptions.return_value = [
-            {"publication_name": "Test", "domain": "test.substack.com"}
-        ]
+        MockUser.return_value.get_subscriptions = AsyncMock(
+            return_value=[{"publication_name": "Test", "domain": "test.substack.com"}]
+        )
 
         with patch("sys.argv", ["substack", "user", "subscriptions", "testuser"]):
             main()
@@ -322,7 +370,7 @@ class TestUserCommands:
 
 
 class TestCategoryCommands:
-    @patch("substack_api.cli.list_all_categories")
+    @patch("substack_api.cli.list_all_categories", new_callable=AsyncMock)
     def test_categories_output(self, mock_list, capsys):
         mock_list.return_value = [("Technology", 1), ("Culture", 2)]
 
@@ -332,42 +380,57 @@ class TestCategoryCommands:
         data = json.loads(capsys.readouterr().out)
         assert data == [{"name": "Technology", "id": 1}, {"name": "Culture", "id": 2}]
 
-    @patch("substack_api.cli.Category")
-    def test_category_newsletters_urls(self, MockCategory, capsys):
-        MockCategory.return_value.get_newsletter_urls.return_value = [
-            "https://a.substack.com", "https://b.substack.com"
-        ]
+    @patch("substack_api.cli.Category.create", new_callable=AsyncMock)
+    def test_category_newsletters_urls(self, mock_create, capsys):
+        mock_category = MagicMock()
+        mock_category.get_newsletter_urls = AsyncMock(
+            return_value=["https://a.substack.com", "https://b.substack.com"]
+        )
+        mock_create.return_value = mock_category
 
-        with patch("sys.argv", ["substack", "category", "newsletters", "--name", "Tech"]):
+        with patch(
+            "sys.argv",
+            ["substack", "category", "newsletters", "--name", "Tech"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
         assert data == ["https://a.substack.com", "https://b.substack.com"]
 
-    @patch("substack_api.cli.Category")
-    def test_category_newsletters_metadata(self, MockCategory, capsys):
-        MockCategory.return_value.get_newsletter_metadata.return_value = [
-            {"name": "A", "url": "https://a.substack.com"}
-        ]
+    @patch("substack_api.cli.Category.create", new_callable=AsyncMock)
+    def test_category_newsletters_metadata(self, mock_create, capsys):
+        mock_category = MagicMock()
+        mock_category.get_newsletter_metadata = AsyncMock(
+            return_value=[{"name": "A", "url": "https://a.substack.com"}]
+        )
+        mock_create.return_value = mock_category
 
-        with patch("sys.argv", ["substack", "category", "newsletters", "--name", "Tech", "--metadata"]):
+        with patch(
+            "sys.argv",
+            ["substack", "category", "newsletters", "--name", "Tech", "--metadata"],
+        ):
             main()
 
         data = json.loads(capsys.readouterr().out)
         assert data == [{"name": "A", "url": "https://a.substack.com"}]
 
-    @patch("substack_api.cli.Category")
-    def test_category_newsletters_by_id(self, MockCategory, capsys):
-        MockCategory.return_value.get_newsletter_urls.return_value = []
+    @patch("substack_api.cli.Category.create", new_callable=AsyncMock)
+    def test_category_newsletters_by_id(self, mock_create, capsys):
+        mock_category = MagicMock()
+        mock_category.get_newsletter_urls = AsyncMock(return_value=[])
+        mock_create.return_value = mock_category
 
-        with patch("sys.argv", ["substack", "category", "newsletters", "--id", "42"]):
+        with patch(
+            "sys.argv",
+            ["substack", "category", "newsletters", "--id", "42"],
+        ):
             main()
 
-        MockCategory.assert_called_once_with(name=None, id=42)
+        mock_create.assert_awaited_once_with(name=None, id=42)
 
 
 class TestResolveHandle:
-    @patch("substack_api.cli.resolve_handle_redirect")
+    @patch("substack_api.cli.resolve_handle_redirect", new_callable=AsyncMock)
     def test_resolve_found(self, mock_resolve, capsys):
         mock_resolve.return_value = "newuser"
 
@@ -377,7 +440,7 @@ class TestResolveHandle:
         data = json.loads(capsys.readouterr().out)
         assert data == {"old_handle": "olduser", "new_handle": "newuser"}
 
-    @patch("substack_api.cli.resolve_handle_redirect")
+    @patch("substack_api.cli.resolve_handle_redirect", new_callable=AsyncMock)
     def test_resolve_not_found(self, mock_resolve, capsys):
         mock_resolve.return_value = None
 
@@ -389,7 +452,7 @@ class TestResolveHandle:
 
 
 class TestPrettyOutput:
-    @patch("substack_api.cli.list_all_categories")
+    @patch("substack_api.cli.list_all_categories", new_callable=AsyncMock)
     def test_pretty_flag(self, mock_list, capsys):
         mock_list.return_value = [("Tech", 1)]
 
@@ -397,7 +460,6 @@ class TestPrettyOutput:
             main()
 
         out = capsys.readouterr().out
-        # Pretty output has indentation
         assert "  " in out
 
 
@@ -428,9 +490,14 @@ class TestErrorHandling:
 
     @patch("substack_api.cli.Newsletter")
     def test_api_error_exits_with_1(self, MockNewsletter, capsys):
-        MockNewsletter.return_value.get_posts.side_effect = Exception("API Error")
+        MockNewsletter.return_value.get_posts = AsyncMock(
+            side_effect=Exception("API Error")
+        )
 
-        with patch("sys.argv", ["substack", "newsletter", "posts", "https://x.substack.com"]):
+        with patch(
+            "sys.argv",
+            ["substack", "newsletter", "posts", "https://x.substack.com"],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 1
@@ -443,11 +510,23 @@ class TestAuthIntegration:
     @patch("substack_api.cli.SubstackAuth")
     def test_cookies_passed_to_post(self, MockAuth, MockPost, capsys):
         mock_auth = MagicMock()
+        mock_auth.aclose = AsyncMock()
         MockAuth.return_value = mock_auth
-        MockPost.return_value.get_metadata.return_value = {"title": "Test"}
+        MockPost.return_value.get_metadata = AsyncMock(return_value={"title": "Test"})
 
-        with patch("sys.argv", ["substack", "--cookies", "cookies.json", "post", "metadata", "https://x.substack.com/p/test"]):
+        with patch(
+            "sys.argv",
+            [
+                "substack",
+                "--cookies",
+                "cookies.json",
+                "post",
+                "metadata",
+                "https://x.substack.com/p/test",
+            ],
+        ):
             main()
 
         MockAuth.assert_called_once_with("cookies.json")
         MockPost.assert_called_once_with("https://x.substack.com/p/test", auth=mock_auth)
+        mock_auth.aclose.assert_awaited_once()

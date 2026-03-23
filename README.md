@@ -51,46 +51,46 @@ Use `--pretty` for human-readable output and `--cookies <path>` for authenticate
 
 ## Python Usage Examples
 
+All network-backed library APIs are asynchronous and should be awaited.
+
 ### Working with Newsletters
 
 ```python
+import asyncio
+
 from substack_api import Newsletter
 
-# Initialize a newsletter by its URL
-newsletter = Newsletter("https://example.substack.com")
 
-# Get recent posts (returns Post objects)
-recent_posts = newsletter.get_posts(limit=5)
+async def main():
+    newsletter = Newsletter("https://example.substack.com")
 
-# Get posts sorted by popularity
-top_posts = newsletter.get_posts(sorting="top", limit=10)
+    recent_posts = await newsletter.get_posts(limit=5)
+    top_posts = await newsletter.get_posts(sorting="top", limit=10)
+    search_results = await newsletter.search_posts("machine learning", limit=3)
+    podcasts = await newsletter.get_podcasts(limit=5)
+    recommendations = await newsletter.get_recommendations()
+    authors = await newsletter.get_authors()
 
-# Search for posts
-search_results = newsletter.search_posts("machine learning", limit=3)
 
-# Get podcast episodes
-podcasts = newsletter.get_podcasts(limit=5)
-
-# Get recommended newsletters
-recommendations = newsletter.get_recommendations()
-
-# Get newsletter authors
-authors = newsletter.get_authors()
+asyncio.run(main())
 ```
 
 ### Working with Posts
 
 ```python
+import asyncio
+
 from substack_api import Post
 
-# Initialize a post by its URL
-post = Post("https://example.substack.com/p/post-slug")
 
-# Get post metadata
-metadata = post.get_metadata()
+async def main():
+    post = Post("https://example.substack.com/p/post-slug")
 
-# Get the post's HTML content
-content = post.get_content()
+    metadata = await post.get_metadata()
+    content = await post.get_content()
+
+
+asyncio.run(main())
 ```
 
 ### Accessing Paywalled Content with Authentication
@@ -98,22 +98,27 @@ content = post.get_content()
 To access paywalled content, you need to provide your own session cookies from a logged-in Substack session:
 
 ```python
+import asyncio
+
 from substack_api import Newsletter, Post, SubstackAuth
 
-# Set up authentication with your cookies
-auth = SubstackAuth(cookies_path="path/to/your/cookies.json")
 
-# Use authentication with newsletters
-newsletter = Newsletter("https://example.substack.com", auth=auth)
-posts = newsletter.get_posts(limit=5)  # Can now access paywalled posts
+async def main():
+    auth = SubstackAuth(cookies_path="path/to/your/cookies.json")
+    try:
+        newsletter = Newsletter("https://example.substack.com", auth=auth)
+        posts = await newsletter.get_posts(limit=5)
 
-# Use authentication with individual posts
-post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
-content = post.get_content()  # Can now access paywalled content
+        post = Post("https://example.substack.com/p/paywalled-post", auth=auth)
+        content = await post.get_content()
 
-# Check if a post is paywalled
-if post.is_paywalled():
-    print("This post requires a subscription")
+        if await post.is_paywalled():
+            print("This post requires a subscription")
+    finally:
+        await auth.aclose()
+
+
+asyncio.run(main())
 ```
 
 #### Getting Your Cookies
@@ -145,20 +150,21 @@ To access paywalled content, you need to export your browser cookies from a logg
 ### Working with Users
 
 ```python
+import asyncio
+
 from substack_api import User
 
-# Initialize a user by their username
-user = User("username")
 
-# Get user profile information
-profile_data = user.get_raw_data()
+async def main():
+    user = User("username")
 
-# Get user ID and name
-user_id = user.id
-name = user.name
+    profile_data = await user.get_raw_data()
+    user_id = user.id
+    name = user.name
+    subscriptions = await user.get_subscriptions()
 
-# Get user's subscriptions
-subscriptions = user.get_subscriptions()
+
+asyncio.run(main())
 ```
 
 #### Handling Renamed Accounts
@@ -166,14 +172,20 @@ Substack allows users to change their handle (username) at any time. When this h
 ##### Automatic Redirect Handling
 
 ```python
+import asyncio
+
 from substack_api import User
 
-# This will automatically follow redirects if the handle has changed
-user = User("oldhandle")  # Will find the user even if they renamed to "newhandle"
 
-# Check if a redirect occurred
-if user.was_redirected:
-    print(f"User was renamed from {user.original_username} to {user.username}")
+async def main():
+    user = User("oldhandle")
+    await user.get_raw_data()
+
+    if user.was_redirected:
+        print(f"User was renamed from {user.original_username} to {user.username}")
+
+
+asyncio.run(main())
 ```
 
 ##### Disable Redirect Following
@@ -190,11 +202,18 @@ user = User("oldhandle", follow_redirects=False)
 You can also manually resolve handle redirects:
 
 ```python
+import asyncio
+
 from substack_api import resolve_handle_redirect
 
-new_handle = resolve_handle_redirect("oldhandle")
-if new_handle:
-    print(f"Handle was renamed to: {new_handle}")
+
+async def main():
+    new_handle = await resolve_handle_redirect("oldhandle")
+    if new_handle:
+        print(f"Handle was renamed to: {new_handle}")
+
+
+asyncio.run(main())
 ```
 ## Limitations
 
@@ -210,10 +229,10 @@ if new_handle:
 
 ```bash
 # Install dev dependencies
-pip install -e ".[dev]"
+uv sync --group dev
 
 # Run tests
-pytest
+uv run --group dev pytest
 ```
 
 ### Contributing

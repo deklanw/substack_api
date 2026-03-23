@@ -26,7 +26,7 @@ pip install -e .
 ## Dependencies
 
 The library has minimal dependencies:
-- `requests` - For making HTTP requests
+- `curl_cffi` - For asynchronous HTTP requests
 
 These dependencies will be automatically installed when you install the package.
 

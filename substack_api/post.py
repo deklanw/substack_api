@@ -1,13 +1,9 @@
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-import requests
+from substack_api._http import DEFAULT_TIMEOUT, HEADERS, async_get
 
 from substack_api.auth import SubstackAuth
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
-}
 
 
 class Post:
@@ -43,7 +39,7 @@ class Post:
     def __repr__(self) -> str:
         return f"Post(url={self.url})"
 
-    def _fetch_post_data(self, force_refresh: bool = False) -> Dict[str, Any]:
+    async def _fetch_post_data(self, force_refresh: bool = False) -> Dict[str, Any]:
         """
         Fetch the raw post data from the API and cache it
 
@@ -62,15 +58,15 @@ class Post:
 
         # Use authenticated session if available
         if self.auth and self.auth.authenticated:
-            r = self.auth.get(self.endpoint, timeout=30)
+            r = await self.auth.get(self.endpoint, timeout=DEFAULT_TIMEOUT)
         else:
-            r = requests.get(self.endpoint, headers=HEADERS, timeout=30)
+            r = await async_get(self.endpoint, headers=HEADERS, timeout=DEFAULT_TIMEOUT)
         r.raise_for_status()
 
         self._post_data = r.json()
         return self._post_data
 
-    def get_metadata(self, force_refresh: bool = False) -> Dict[str, Any]:
+    async def get_metadata(self, force_refresh: bool = False) -> Dict[str, Any]:
         """
         Get metadata for the post.
 
@@ -84,9 +80,9 @@ class Post:
         Dict[str, Any]
             Full post metadata
         """
-        return self._fetch_post_data(force_refresh=force_refresh)
+        return await self._fetch_post_data(force_refresh=force_refresh)
 
-    def get_content(self, force_refresh: bool = False) -> Optional[str]:
+    async def get_content(self, force_refresh: bool = False) -> Optional[str]:
         """
         Get the HTML content of the post.
 
@@ -100,7 +96,7 @@ class Post:
         Optional[str]
             HTML content of the post, or None if not available
         """
-        data = self._fetch_post_data(force_refresh=force_refresh)
+        data = await self._fetch_post_data(force_refresh=force_refresh)
         content = data.get("body_html")
 
         # Check if content is paywalled and we don't have auth
@@ -111,7 +107,7 @@ class Post:
 
         return content
 
-    def is_paywalled(self) -> bool:
+    async def is_paywalled(self) -> bool:
         """
         Check if the post is paywalled.
 
@@ -120,5 +116,5 @@ class Post:
         bool
             True if post is paywalled
         """
-        data = self._fetch_post_data()
+        data = await self._fetch_post_data()
         return data.get("audience") == "only_paid"

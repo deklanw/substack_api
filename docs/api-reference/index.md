@@ -22,7 +22,7 @@ Each module documentation includes:
 Most classes in the library follow these patterns:
 
 1. **Initialization**: Create an object by providing an identifier (URL, username, etc.)
-2. **Data Retrieval**: Methods that fetch data from the Substack API
+2. **Data Retrieval**: Async methods that fetch data from the Substack API
 3. **Caching**: Data is cached to avoid unnecessary API requests
 4. **Force Refresh**: Most methods accept a `force_refresh` parameter to bypass the cache
 
@@ -30,7 +30,7 @@ Most classes in the library follow these patterns:
 
 The library uses standard Python exceptions:
 
-- `requests.exceptions.HTTPError`: Raised when an HTTP request fails
+- `curl_cffi.requests.exceptions.HTTPError`: Raised when an HTTP request fails
 - `ValueError`: Raised when invalid parameters are provided
 - `KeyError`: Raised when expected data is not found in the API response
 

@@ -1,9 +1,15 @@
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import requests
+from curl_cffi import requests as curl_requests
 
-from substack_api.post import Post
+from substack_api._http import DEFAULT_TIMEOUT
+from substack_api.post import HEADERS, Post
+
+
+def run(coro):
+    return asyncio.run(coro)
 
 
 @pytest.fixture
@@ -44,115 +50,97 @@ def test_post_string_representation(sample_post_url):
 
 
 def test_init_handles_different_url_formats():
-    # URL with trailing slash
     post1 = Post("https://blog.substack.com/p/test-slug/")
     assert post1.slug == "test-slug"
 
-    # URL with query parameters
     post2 = Post("https://blog.substack.com/p/test-slug?source=homepage-featured")
     assert post2.slug == "test-slug"
 
-    # URL with fragment
     post3 = Post("https://blog.substack.com/p/test-slug#section-1")
     assert post3.slug == "test-slug"
 
-    # Empty path
     post4 = Post("https://blog.substack.com")
     assert post4.slug == ""
 
 
-@patch("substack_api.post.requests.get")
+@patch("substack_api.post.async_get", new_callable=AsyncMock)
 def test_fetch_post_data(mock_get, sample_post_url, mock_post_data):
-    # Configure the mock
     mock_response = MagicMock()
     mock_response.json.return_value = mock_post_data
     mock_get.return_value = mock_response
 
     post = Post(sample_post_url)
-    data = post._fetch_post_data()
+    data = run(post._fetch_post_data())
 
-    # Verify the request was made correctly
-    mock_get.assert_called_once_with(
+    mock_get.assert_awaited_once_with(
         post.endpoint,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
-        },
-        timeout=30,
+        headers=HEADERS,
+        timeout=DEFAULT_TIMEOUT,
     )
-
-    # Verify the data is stored and returned
     assert data == mock_post_data
     assert post._post_data == mock_post_data
 
 
-@patch("substack_api.post.requests.get")
+@patch("substack_api.post.async_get", new_callable=AsyncMock)
 def test_fetch_post_data_uses_cache(mock_get, sample_post_url, mock_post_data):
-    # Configure the mock
     mock_response = MagicMock()
     mock_response.json.return_value = mock_post_data
     mock_get.return_value = mock_response
 
     post = Post(sample_post_url)
 
-    # First call should fetch data
-    post._fetch_post_data()
-    assert mock_get.call_count == 1
+    run(post._fetch_post_data())
+    assert mock_get.await_count == 1
 
-    # Second call should use cached data
-    post._fetch_post_data()
-    assert mock_get.call_count == 1
+    run(post._fetch_post_data())
+    assert mock_get.await_count == 1
 
-    # Force refresh should fetch data again
-    post._fetch_post_data(force_refresh=True)
-    assert mock_get.call_count == 2
+    run(post._fetch_post_data(force_refresh=True))
+    assert mock_get.await_count == 2
 
 
-@patch("substack_api.post.requests.get")
+@patch("substack_api.post.async_get", new_callable=AsyncMock)
 def test_fetch_post_data_raises_exception(mock_get, sample_post_url):
-    # Configure the mock to raise an exception
-    mock_get.side_effect = requests.RequestException("API Error")
+    mock_get.side_effect = curl_requests.exceptions.RequestException("API Error")
 
     post = Post(sample_post_url)
-    with pytest.raises(requests.RequestException, match="API Error"):
-        post._fetch_post_data()
+    with pytest.raises(curl_requests.exceptions.RequestException, match="API Error"):
+        run(post._fetch_post_data())
 
 
-@patch("substack_api.post.Post._fetch_post_data")
+@patch("substack_api.post.Post._fetch_post_data", new_callable=AsyncMock)
 def test_get_metadata(mock_fetch_data, sample_post_url, mock_post_data):
     mock_fetch_data.return_value = mock_post_data
 
     post = Post(sample_post_url)
-    metadata = post.get_metadata()
+    metadata = run(post.get_metadata())
 
     assert metadata == mock_post_data
-    mock_fetch_data.assert_called_once_with(force_refresh=False)
+    mock_fetch_data.assert_awaited_once_with(force_refresh=False)
 
-    # Test force refresh
-    post.get_metadata(force_refresh=True)
-    mock_fetch_data.assert_called_with(force_refresh=True)
+    run(post.get_metadata(force_refresh=True))
+    mock_fetch_data.assert_awaited_with(force_refresh=True)
 
 
-@patch("substack_api.post.Post._fetch_post_data")
+@patch("substack_api.post.Post._fetch_post_data", new_callable=AsyncMock)
 def test_get_content(mock_fetch_data, sample_post_url, mock_post_data):
     mock_fetch_data.return_value = mock_post_data
 
     post = Post(sample_post_url)
-    content = post.get_content()
+    content = run(post.get_content())
 
     assert content == mock_post_data["body_html"]
-    mock_fetch_data.assert_called_once_with(force_refresh=False)
+    mock_fetch_data.assert_awaited_once_with(force_refresh=False)
 
-    # Test force refresh
-    post.get_content(force_refresh=True)
-    mock_fetch_data.assert_called_with(force_refresh=True)
+    run(post.get_content(force_refresh=True))
+    mock_fetch_data.assert_awaited_with(force_refresh=True)
 
 
-@patch("substack_api.post.Post._fetch_post_data")
+@patch("substack_api.post.Post._fetch_post_data", new_callable=AsyncMock)
 def test_get_content_handles_missing_content(mock_fetch_data, sample_post_url):
-    # Test with missing body_html
     mock_fetch_data.return_value = {"title": "Test Post"}
 
     post = Post(sample_post_url)
-    content = post.get_content()
+    content = run(post.get_content())
 
     assert content is None

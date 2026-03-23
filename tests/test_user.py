@@ -1,176 +1,156 @@
-import unittest
-from unittest.mock import Mock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from substack_api._http import DEFAULT_TIMEOUT
 from substack_api.user import HEADERS, User
 
 
-class TestUser(unittest.TestCase):
-    def test_user_init(self):
-        user = User("testuser")
-        self.assertEqual(user.username, "testuser")
-        self.assertEqual(
-            user.endpoint, "https://substack.com/api/v1/user/testuser/public_profile"
-        )
-        self.assertIsNone(user._user_data)
+def run(coro):
+    return asyncio.run(coro)
 
-    def test_user_string_representation(self):
-        user = User("testuser")
-        self.assertEqual(str(user), "User: testuser")
-        self.assertEqual(repr(user), "User(username=testuser)")
 
-    @patch("requests.get")
-    def test_fetch_user_data(self, mock_get):
-        # Setup
-        mock_response = Mock()
-        mock_response.json.return_value = {"id": 123, "name": "Test User"}
-        mock_get.return_value = mock_response
+def test_user_init():
+    user = User("testuser")
+    assert user.username == "testuser"
+    assert user.endpoint == "https://substack.com/api/v1/user/testuser/public_profile"
+    assert user._user_data is None
 
-        # Execute
-        user = User("testuser")
-        data = user._fetch_user_data()
 
-        # Assert
-        self.assertEqual(data, {"id": 123, "name": "Test User"})
-        mock_get.assert_called_once_with(
-            "https://substack.com/api/v1/user/testuser/public_profile",
-            headers=HEADERS,
-            timeout=30,
-        )
+def test_user_string_representation():
+    user = User("testuser")
+    assert str(user) == "User: testuser"
+    assert repr(user) == "User(username=testuser)"
 
-    @patch("requests.get")
-    def test_fetch_user_data_uses_cache(self, mock_get):
-        # Setup
-        mock_response = Mock()
-        mock_response.json.return_value = {"id": 123, "name": "Test User"}
-        mock_get.return_value = mock_response
 
-        # Execute
-        user = User("testuser")
-        user._fetch_user_data()  # First call
-        user._fetch_user_data()  # Should use cache
+@patch("substack_api.user.async_get", new_callable=AsyncMock)
+def test_fetch_user_data(mock_get):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": 123, "name": "Test User"}
+    mock_get.return_value = mock_response
 
-        # Assert - only called once despite two fetch attempts
-        mock_get.assert_called_once()
+    user = User("testuser")
+    data = run(user._fetch_user_data())
 
-    @patch("requests.get")
-    def test_fetch_user_data_force_refresh(self, mock_get):
-        # Setup
-        mock_response = Mock()
-        mock_response.json.return_value = {"id": 123, "name": "Test User"}
-        mock_get.return_value = mock_response
+    assert data == {"id": 123, "name": "Test User"}
+    mock_get.assert_awaited_once_with(
+        "https://substack.com/api/v1/user/testuser/public_profile",
+        headers=HEADERS,
+        timeout=DEFAULT_TIMEOUT,
+    )
 
-        # Execute
-        user = User("testuser")
-        user._fetch_user_data()  # First call
-        user._fetch_user_data(force_refresh=True)  # Force refresh
 
-        # Assert - called twice due to force refresh
-        self.assertEqual(mock_get.call_count, 2)
+@patch("substack_api.user.async_get", new_callable=AsyncMock)
+def test_fetch_user_data_uses_cache(mock_get):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": 123, "name": "Test User"}
+    mock_get.return_value = mock_response
 
-    @patch("requests.get")
-    def test_get_raw_data(self, mock_get):
-        # Setup
-        mock_response = Mock()
-        mock_response.json.return_value = {"id": 123, "name": "Test User"}
-        mock_get.return_value = mock_response
+    user = User("testuser")
+    run(user._fetch_user_data())
+    run(user._fetch_user_data())
 
-        # Execute
-        user = User("testuser")
-        data = user.get_raw_data()
+    mock_get.assert_awaited_once()
 
-        # Assert
-        self.assertEqual(data, {"id": 123, "name": "Test User"})
-        mock_get.assert_called_once()
 
-    @patch("substack_api.user.User._fetch_user_data")
-    def test_user_id_property(self, mock_fetch):
-        # Setup
-        mock_fetch.return_value = {"id": 456, "name": "Test User"}
+@patch("substack_api.user.async_get", new_callable=AsyncMock)
+def test_fetch_user_data_force_refresh(mock_get):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": 123, "name": "Test User"}
+    mock_get.return_value = mock_response
 
-        # Execute
-        user = User("testuser")
-        user_id = user.id
+    user = User("testuser")
+    run(user._fetch_user_data())
+    run(user._fetch_user_data(force_refresh=True))
 
-        # Assert
-        self.assertEqual(user_id, 456)
-        mock_fetch.assert_called_once()
+    assert mock_get.await_count == 2
 
-    @patch("substack_api.user.User._fetch_user_data")
-    def test_user_name_property(self, mock_fetch):
-        # Setup
-        mock_fetch.return_value = {"id": 123, "name": "John Doe"}
 
-        # Execute
-        user = User("testuser")
-        name = user.name
+@patch("substack_api.user.async_get", new_callable=AsyncMock)
+def test_get_raw_data(mock_get):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": 123, "name": "Test User"}
+    mock_get.return_value = mock_response
 
-        # Assert
-        self.assertEqual(name, "John Doe")
-        mock_fetch.assert_called_once()
+    user = User("testuser")
+    data = run(user.get_raw_data())
 
-    @patch("substack_api.user.User._fetch_user_data")
-    def test_user_profile_setup_date(self, mock_fetch):
-        # Setup
-        mock_fetch.return_value = {
-            "id": 123,
-            "name": "Test User",
-            "profile_set_up_at": "2023-01-01T12:00:00Z",
-        }
+    assert data == {"id": 123, "name": "Test User"}
+    mock_get.assert_awaited_once()
 
-        # Execute
-        user = User("testuser")
-        setup_date = user.profile_set_up_at
 
-        # Assert
-        self.assertEqual(setup_date, "2023-01-01T12:00:00Z")
-        mock_fetch.assert_called_once()
+def test_user_id_property_requires_loaded_data():
+    user = User("testuser")
 
-    @patch("substack_api.user.User._fetch_user_data")
-    def test_get_subscriptions(self, mock_fetch):
-        # Setup
-        mock_fetch.return_value = {
-            "subscriptions": [
-                {
-                    "publication": {
-                        "id": "123",
-                        "name": "Tech Newsletter",
-                        "subdomain": "tech",
-                    },
-                    "membership_state": "subscribed",
-                },
-                {
-                    "publication": {
-                        "id": "456",
-                        "name": "Science Weekly",
-                        "custom_domain": "science-weekly.com",
-                    },
-                    "membership_state": "paid_subscriber",
-                },
-            ]
-        }
+    with pytest.raises(RuntimeError, match="Await get_raw_data\\(\\) first"):
+        _ = user.id
 
-        # Execute
-        user = User("testuser")
-        subscriptions = user.get_subscriptions()
 
-        # Assert
-        expected = [
+def test_user_id_property():
+    user = User("testuser")
+    user._user_data = {"id": 456, "name": "Test User"}
+
+    assert user.id == 456
+
+
+def test_user_name_property():
+    user = User("testuser")
+    user._user_data = {"id": 123, "name": "John Doe"}
+
+    assert user.name == "John Doe"
+
+
+def test_user_profile_setup_date():
+    user = User("testuser")
+    user._user_data = {
+        "id": 123,
+        "name": "Test User",
+        "profile_set_up_at": "2023-01-01T12:00:00Z",
+    }
+
+    assert user.profile_set_up_at == "2023-01-01T12:00:00Z"
+
+
+@patch("substack_api.user.User._fetch_user_data", new_callable=AsyncMock)
+def test_get_subscriptions(mock_fetch):
+    mock_fetch.return_value = {
+        "subscriptions": [
             {
-                "publication_id": "123",
-                "publication_name": "Tech Newsletter",
-                "domain": "tech.substack.com",
+                "publication": {
+                    "id": "123",
+                    "name": "Tech Newsletter",
+                    "subdomain": "tech",
+                },
                 "membership_state": "subscribed",
             },
             {
-                "publication_id": "456",
-                "publication_name": "Science Weekly",
-                "domain": "science-weekly.com",
+                "publication": {
+                    "id": "456",
+                    "name": "Science Weekly",
+                    "custom_domain": "science-weekly.com",
+                },
                 "membership_state": "paid_subscriber",
             },
         ]
-        self.assertEqual(subscriptions, expected)
-        mock_fetch.assert_called_once()
+    }
 
+    user = User("testuser")
+    subscriptions = run(user.get_subscriptions())
 
-if __name__ == "__main__":
-    unittest.main()
+    expected = [
+        {
+            "publication_id": "123",
+            "publication_name": "Tech Newsletter",
+            "domain": "tech.substack.com",
+            "membership_state": "subscribed",
+        },
+        {
+            "publication_id": "456",
+            "publication_name": "Science Weekly",
+            "domain": "science-weekly.com",
+            "membership_state": "paid_subscriber",
+        },
+    ]
+    assert subscriptions == expected
+    mock_fetch.assert_awaited_once()

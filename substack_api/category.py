@@ -1,17 +1,13 @@
-from time import sleep
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple
 
-import requests
+from substack_api._http import DEFAULT_TIMEOUT, HEADERS, async_get, polite_request_delay
 
 # Add Newsletter import
 from .newsletter import Newsletter
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
-}
-
-
-def list_all_categories() -> List[Tuple[str, int]]:
+async def list_all_categories() -> List[Tuple[str, int]]:
     """
     Get name / id representations of all newsletter categories
 
@@ -21,7 +17,7 @@ def list_all_categories() -> List[Tuple[str, int]]:
         List of tuples containing (category_name, category_id)
     """
     endpoint_cat = "https://substack.com/api/v1/categories"
-    r = requests.get(endpoint_cat, headers=HEADERS, timeout=30)
+    r = await async_get(endpoint_cat, headers=HEADERS, timeout=DEFAULT_TIMEOUT)
     r.raise_for_status()
     categories = [(i["name"], i["id"]) for i in r.json()]
     return categories
@@ -55,19 +51,27 @@ class Category:
         self.id = id
         self._newsletters_data = None  # Cache for newsletter data
 
-        # Retrieve missing attributes if only one of name or id is provided
-        if self.name and self.id is None:
-            self._get_id_from_name()
-        elif self.id and self.name is None:
-            self._get_name_from_id()
-
     def __str__(self) -> str:
         return f"{self.name} ({self.id})"
 
     def __repr__(self) -> str:
         return f"Category(name={self.name}, id={self.id})"
 
-    def _get_id_from_name(self) -> None:
+    @classmethod
+    async def create(
+        cls, name: Optional[str] = None, id: Optional[int] = None
+    ) -> "Category":
+        category = cls(name=name, id=id)
+        await category._ensure_resolved()
+        return category
+
+    async def _ensure_resolved(self) -> None:
+        if self.name is not None and self.id is None:
+            await self._get_id_from_name()
+        elif self.id is not None and self.name is None:
+            await self._get_name_from_id()
+
+    async def _get_id_from_name(self) -> None:
         """
         Lookup category ID based on name
 
@@ -76,14 +80,14 @@ class Category:
         ValueError
             If the category name is not found
         """
-        categories = list_all_categories()
+        categories = await list_all_categories()
         for name, id in categories:
             if name == self.name:
                 self.id = id
                 return
         raise ValueError(f"Category name '{self.name}' not found")
 
-    def _get_name_from_id(self) -> None:
+    async def _get_name_from_id(self) -> None:
         """
         Lookup category name based on ID
 
@@ -92,14 +96,14 @@ class Category:
         ValueError
             If the category ID is not found
         """
-        categories = list_all_categories()
+        categories = await list_all_categories()
         for name, id in categories:
             if id == self.id:
                 self.name = name
                 return
         raise ValueError(f"Category ID {self.id} not found")
 
-    def _fetch_newsletters_data(
+    async def _fetch_newsletters_data(
         self, force_refresh: bool = False
     ) -> List[Dict[str, Any]]:
         """
@@ -118,6 +122,8 @@ class Category:
         if self._newsletters_data is not None and not force_refresh:
             return self._newsletters_data
 
+        await self._ensure_resolved()
+
         endpoint = f"https://substack.com/api/v1/category/public/{self.id}/all?page="
 
         all_newsletters = []
@@ -126,9 +132,9 @@ class Category:
         # endpoint doesn't return more than 21 pages
         while more and page_num <= 20:
             full_url = endpoint + str(page_num)
-            r = requests.get(full_url, headers=HEADERS, timeout=30)
+            r = await async_get(full_url, headers=HEADERS, timeout=DEFAULT_TIMEOUT)
             r.raise_for_status()
-            sleep(2)  # Be polite to the server
+            await polite_request_delay()
 
             resp = r.json()
             newsletters = resp["publications"]
@@ -139,7 +145,7 @@ class Category:
         self._newsletters_data = all_newsletters
         return all_newsletters
 
-    def get_newsletter_urls(self) -> List[str]:
+    async def get_newsletter_urls(self) -> List[str]:
         """
         Get only the URLs of newsletters in this category
 
@@ -148,11 +154,11 @@ class Category:
         List[str]
             List of newsletter URLs
         """
-        data = self._fetch_newsletters_data()
+        data = await self._fetch_newsletters_data()
 
         return [item["base_url"] for item in data]
 
-    def get_newsletters(self) -> List[Newsletter]:
+    async def get_newsletters(self) -> List[Newsletter]:
         """
         Get Newsletter objects for all newsletters in this category
 
@@ -161,10 +167,10 @@ class Category:
         List[Newsletter]
             List of Newsletter objects
         """
-        urls = self.get_newsletter_urls()
+        urls = await self.get_newsletter_urls()
         return [Newsletter(url) for url in urls]
 
-    def get_newsletter_metadata(self) -> List[Dict[str, Any]]:
+    async def get_newsletter_metadata(self) -> List[Dict[str, Any]]:
         """
         Get full metadata for all newsletters in this category
 
@@ -173,10 +179,10 @@ class Category:
         List[Dict[str, Any]]
             List of newsletter metadata dictionaries
         """
-        return self._fetch_newsletters_data()
+        return await self._fetch_newsletters_data()
 
-    def refresh_data(self) -> None:
+    async def refresh_data(self) -> None:
         """
         Force refresh of the newsletter data cache
         """
-        self._fetch_newsletters_data(force_refresh=True)
+        await self._fetch_newsletters_data(force_refresh=True)

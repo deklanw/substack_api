@@ -1,16 +1,17 @@
+from __future__ import annotations
+
 import re
 import urllib.parse
-from time import sleep
 from typing import Any, Dict, List, Optional
 
-import requests
+from substack_api._http import (
+    DEFAULT_TIMEOUT,
+    HEADERS,
+    async_get,
+    polite_request_delay,
+)
 
 from substack_api.auth import SubstackAuth
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36"
-}
-
 
 SEARCH_URL = "https://substack.com/api/v1/publication/search"
 
@@ -65,7 +66,7 @@ class Newsletter:
         auth : Optional[SubstackAuth]
             Authentication handler for accessing paywalled content
         """
-        self.url = url
+        self.url = url.rstrip("/")
         self.auth = auth
 
     def __str__(self) -> str:
@@ -74,7 +75,7 @@ class Newsletter:
     def __repr__(self) -> str:
         return f"Newsletter(url={self.url})"
 
-    def _make_request(self, endpoint: str, **kwargs) -> requests.Response:
+    async def _make_request(self, endpoint: str, **kwargs):
         """
         Make a GET request to the specified endpoint with authentication if needed.
 
@@ -87,18 +88,18 @@ class Newsletter:
 
         Returns
         -------
-        requests.Response
+        curl_cffi.requests.Response
             The response object from the request
         """
         if self.auth and self.auth.authenticated:
-            resp = self.auth.get(endpoint, **kwargs)
+            resp = await self.auth.get(endpoint, **kwargs)
         else:
-            resp = requests.get(endpoint, headers=HEADERS, **kwargs)
+            resp = await async_get(endpoint, headers=HEADERS, **kwargs)
 
-        sleep(2)  # Be polite to the server
+        await polite_request_delay()
         return resp
 
-    def _fetch_paginated_posts(
+    async def _fetch_paginated_posts(
         self, params: Dict[str, str], limit: Optional[int] = None, page_size: int = 15
     ) -> List[Dict[str, Any]]:
         """
@@ -133,7 +134,7 @@ class Newsletter:
             endpoint = f"{self.url}/api/v1/archive?{query_string}"
 
             # Make the request
-            response = self._make_request(endpoint, timeout=30)
+            response = await self._make_request(endpoint, timeout=DEFAULT_TIMEOUT)
             response.raise_for_status()
 
             items = response.json()
@@ -158,7 +159,7 @@ class Newsletter:
         # The caller will create Post objects as needed
         return results
 
-    def get_posts(self, sorting: str = "new", limit: Optional[int] = None) -> List:
+    async def get_posts(self, sorting: str = "new", limit: Optional[int] = None) -> List:
         """
         Get posts from the newsletter with specified sorting
 
@@ -177,10 +178,10 @@ class Newsletter:
         from .post import Post  # Import here to avoid circular import
 
         params = {"sort": sorting}
-        post_data = self._fetch_paginated_posts(params, limit)
+        post_data = await self._fetch_paginated_posts(params, limit)
         return [Post(item["canonical_url"], auth=self.auth) for item in post_data]
 
-    def search_posts(self, query: str, limit: Optional[int] = None) -> List:
+    async def search_posts(self, query: str, limit: Optional[int] = None) -> List:
         """
         Search posts in the newsletter with the given query
 
@@ -199,10 +200,10 @@ class Newsletter:
         from .post import Post  # Import here to avoid circular import
 
         params = {"sort": "new", "search": query}
-        post_data = self._fetch_paginated_posts(params, limit)
+        post_data = await self._fetch_paginated_posts(params, limit)
         return [Post(item["canonical_url"], auth=self.auth) for item in post_data]
 
-    def get_podcasts(self, limit: Optional[int] = None) -> List:
+    async def get_podcasts(self, limit: Optional[int] = None) -> List:
         """
         Get podcast posts from the newsletter
 
@@ -219,10 +220,10 @@ class Newsletter:
         from .post import Post  # Import here to avoid circular import
 
         params = {"sort": "new", "type": "podcast"}
-        post_data = self._fetch_paginated_posts(params, limit)
+        post_data = await self._fetch_paginated_posts(params, limit)
         return [Post(item["canonical_url"], auth=self.auth) for item in post_data]
 
-    def _resolve_publication_id(self) -> Optional[int]:
+    async def _resolve_publication_id(self) -> Optional[int]:
         """
         Resolve publication_id via Substack discovery search—no posts needed.
 
@@ -237,7 +238,7 @@ class Newsletter:
 
         Raises
         ------
-        requests.HTTPError
+        curl_cffi.requests.exceptions.HTTPError
             If the HTTP request to Substack fails.
         """
         host = _host_from_url(self.url)
@@ -249,24 +250,27 @@ class Newsletter:
             "skipExplanation": "true",
             "sort": "relevance",
         }
-        r = requests.get(
-            SEARCH_URL, headers=DISCOVERY_HEADERS, params=params, timeout=30
+        r = await async_get(
+            SEARCH_URL,
+            headers=DISCOVERY_HEADERS,
+            params=params,
+            timeout=DEFAULT_TIMEOUT,
         )
         r.raise_for_status()
         match = _match_publication(r.json(), host)
         return match.get("id") if match else None
 
-    def get_recommendations(self) -> List["Newsletter"]:
+    async def get_recommendations(self) -> List["Newsletter"]:
         """
         Get recommended publications without relying on the latest post.
         """
-        publication_id = self._resolve_publication_id()
+        publication_id = await self._resolve_publication_id()
         if not publication_id:
             # graceful fallback to your existing (post-derived) path
             try:
-                posts = self.get_posts(limit=1)
+                posts = await self.get_posts(limit=1)
                 publication_id = (
-                    posts[0].get_metadata()["publication_id"] if posts else None
+                    (await posts[0].get_metadata())["publication_id"] if posts else None
                 )
             except Exception:
                 publication_id = None
@@ -274,7 +278,7 @@ class Newsletter:
             return []
 
         endpoint = f"{self.url}/api/v1/recommendations/from/{publication_id}"
-        response = self._make_request(endpoint, timeout=30)
+        response = await self._make_request(endpoint, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         recommendations = response.json() or []
 
@@ -290,7 +294,7 @@ class Newsletter:
 
         return [Newsletter(u, auth=self.auth) for u in urls]
 
-    def get_authors(self) -> List:
+    async def get_authors(self) -> List:
         """
         Get authors of the newsletter
 
@@ -302,7 +306,7 @@ class Newsletter:
         from .user import User  # Import here to avoid circular import
 
         endpoint = f"{self.url}/api/v1/publication/users/ranked?public=true"
-        r = self._make_request(endpoint, timeout=30)
+        r = await self._make_request(endpoint, timeout=DEFAULT_TIMEOUT)
         r.raise_for_status()
         authors = r.json()
         return [User(author["handle"]) for author in authors]

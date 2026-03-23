@@ -15,7 +15,7 @@ Newsletter(url: str, auth: Optional[SubstackAuth] = None)
 
 ## Methods
 
-### `_fetch_paginated_posts(params: Dict[str, str], limit: Optional[int] = None, page_size: int = 15) -> List[Dict[str, Any]]`
+### `await _fetch_paginated_posts(params: Dict[str, str], limit: Optional[int] = None, page_size: int = 15) -> List[Dict[str, Any]]`
 
 Helper method to fetch paginated posts with different query parameters.
 
@@ -29,7 +29,7 @@ Helper method to fetch paginated posts with different query parameters.
 
 - `List[Dict[str, Any]]`: List of post data dictionaries
 
-### `get_posts(sorting: str = "new", limit: Optional[int] = None) -> List[Post]`
+### `await get_posts(sorting: str = "new", limit: Optional[int] = None) -> List[Post]`
 
 Get posts from the newsletter with specified sorting.
 
@@ -42,7 +42,7 @@ Get posts from the newsletter with specified sorting.
 
 - `List[Post]`: List of Post objects
 
-### `search_posts(query: str, limit: Optional[int] = None) -> List[Post]`
+### `await search_posts(query: str, limit: Optional[int] = None) -> List[Post]`
 
 Search posts in the newsletter with the given query.
 
@@ -55,7 +55,7 @@ Search posts in the newsletter with the given query.
 
 - `List[Post]`: List of Post objects matching the search query
 
-### `get_podcasts(limit: Optional[int] = None) -> List[Post]`
+### `await get_podcasts(limit: Optional[int] = None) -> List[Post]`
 
 Get podcast posts from the newsletter.
 
@@ -67,7 +67,7 @@ Get podcast posts from the newsletter.
 
 - `List[Post]`: List of Post objects representing podcast posts
 
-### `get_recommendations() -> List[Newsletter]`
+### `await get_recommendations() -> List[Newsletter]`
 
 Get recommended publications for this newsletter.
 
@@ -75,7 +75,7 @@ Get recommended publications for this newsletter.
 
 - `List[Newsletter]`: List of recommended Newsletter objects
 
-### `get_authors() -> List[User]`
+### `await get_authors() -> List[User]`
 
 Get authors of the newsletter.
 
@@ -86,45 +86,49 @@ Get authors of the newsletter.
 ## Example Usage
 
 ```python
+import asyncio
+
 from substack_api import Newsletter, SubstackAuth
 
-# Create a newsletter object
-newsletter = Newsletter("https://example.substack.com")
 
-# Get recent posts
-recent_posts = newsletter.get_posts(limit=5)
-for post in recent_posts:
-    metadata = post.get_metadata()
-    print(f"Post: {metadata['title']}")
+async def main():
+    newsletter = Newsletter("https://example.substack.com")
 
-# Search for posts on a specific topic
-search_results = newsletter.search_posts("machine learning", limit=3)
-for post in search_results:
-    metadata = post.get_metadata()
-    print(f"Found: {metadata['title']}")
+    recent_posts = await newsletter.get_posts(limit=5)
+    for post in recent_posts:
+        metadata = await post.get_metadata()
+        print(f"Post: {metadata['title']}")
 
-# Get podcast episodes
-podcasts = newsletter.get_podcasts(limit=2)
-for podcast in podcasts:
-    metadata = podcast.get_metadata()
-    print(f"Podcast: {metadata['title']}")
+    search_results = await newsletter.search_posts("machine learning", limit=3)
+    for post in search_results:
+        metadata = await post.get_metadata()
+        print(f"Found: {metadata['title']}")
 
-# Get newsletter authors
-authors = newsletter.get_authors()
-for author in authors:
-    print(f"Author: {author.name}")
+    podcasts = await newsletter.get_podcasts(limit=2)
+    for podcast in podcasts:
+        metadata = await podcast.get_metadata()
+        print(f"Podcast: {metadata['title']}")
 
-# Get recommended newsletters
-recommendations = newsletter.get_recommendations()
-for rec in recommendations:
-    print(f"Recommended: {rec.url}")
+    authors = await newsletter.get_authors()
+    for author in authors:
+        await author.get_raw_data()
+        print(f"Author: {author.name}")
 
-# Use with authentication for paywalled content
-auth = SubstackAuth(cookies_path="cookies.json")
-authenticated_newsletter = Newsletter("https://example.substack.com", auth=auth)
-paywalled_posts = authenticated_newsletter.get_posts(limit=5)
-for post in paywalled_posts:
-    if post.is_paywalled():
-        content = post.get_content()  # Now accessible with auth
-        print(f"Paywalled content: {content[:100]}...")
+    recommendations = await newsletter.get_recommendations()
+    for rec in recommendations:
+        print(f"Recommended: {rec.url}")
+
+    auth = SubstackAuth(cookies_path="cookies.json")
+    try:
+        authenticated_newsletter = Newsletter("https://example.substack.com", auth=auth)
+        paywalled_posts = await authenticated_newsletter.get_posts(limit=5)
+        for post in paywalled_posts:
+            if await post.is_paywalled():
+                content = await post.get_content()
+                print(f"Paywalled content: {content[:100]}...")
+    finally:
+        await auth.aclose()
+
+
+asyncio.run(main())
 ```
